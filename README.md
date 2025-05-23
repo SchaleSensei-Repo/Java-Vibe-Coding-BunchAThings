@@ -47,6 +47,20 @@ List of available application :
   + Customizable fire amount for each turn
   + For hotseat multiplayer with randomized ship position
 
+- Deal or No Deal (for fun and entertainment only):
+  + Customizable number of bags
+  + Customizable minimum and maximum score value of bag
+  + Customizable minimum and maximum score value of offering and the range of offering opportunity
+  + Able to change the bag in the middle of play
+  + Have option to show (with tracking) or hide the list of bag score value
+ 
+- Slot Machine (for fun and entertainment only):
+  + Customizable initial point
+  + Customizable the payment points
+  + Customizable payout multipliers
+  + Customizable number of payout lines for winning condition
+  + Added logs for winning payout
+
 
 ===Future Application===
 
@@ -69,16 +83,3 @@ List of available application :
   + Customizable initial score
   + Customizable additional score and subtraction score
   + Have log and grand total of previous iteration
- 
-- Deal or No Deal (for fun and entertainment only):
-  + Customizable number of bags
-  + Customizable minimum and maximum score value of bag
-  + Customizable minimum and maximum score value of offering and the range of offering opportunity
-  + Able to change the bag in the middle of play
-  + Have option to show (with tracking) or hide the list of bag score value
- 
-- Gamble Slot (for fun and entertainment only):
-  + Customizable initial score
-  + Customizable the payment value
-  + Customizable payout value and proportion
-  + Customizable number of payout lines for winning condition
