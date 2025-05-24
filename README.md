@@ -3,6 +3,16 @@ A repo for Bunch of small java application
 
 BIG NOTE : All of Java Applications are fully written from AI with some minor changes from me.
 
+Reasons why i have this little applications and upload it to repository?
+my reasons is : 
+ - For the little applications : I find the AI fascinating in terms of capability to create some simple applications and help me to make some of my idea into actual applications
+ - For the repository : I create this repository for my hobby needs and practical learning in the world of repository and CI/CD world. For now it is small repository and does not have CI/CD workflows, in a future i plan for some lint, SAST/DAST and some Jenkins workflow if possible
+
+
+Feel free to clone this repo to do something with it
+Maybe for improving this little applications by modify the source code
+Or just to use the application as is. Maybe it can help for a little bit
+
 
 These application is grouped inside Application Hub
 
