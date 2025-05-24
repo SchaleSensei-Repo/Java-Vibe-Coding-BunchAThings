@@ -34,8 +34,7 @@ List of available application :
   + With scoring system
   + Solo single player or hotseat multiplayer
   + Customize the game by using settings menu
-  ===Future Update===
-  - Thousand separator number formatting
+  - (Planned update) Thousand separator number formatting
     
 - Hangman :
   + Unlimited tries/attempt
