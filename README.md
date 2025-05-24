@@ -61,9 +61,6 @@ List of available application :
   + Customizable number of payout lines for winning condition
   + Added logs for winning payout
 
-
-===Future Application===
-
 - Shop Budgeter :
   + With given the budget, the application will calculate what can user buy
   + With support of custom items
@@ -83,3 +80,7 @@ List of available application :
   + Customizable initial score
   + Customizable additional score and subtraction score
   + Have log and grand total of previous iteration
+
+===Future Application===
+
+None at the moment
