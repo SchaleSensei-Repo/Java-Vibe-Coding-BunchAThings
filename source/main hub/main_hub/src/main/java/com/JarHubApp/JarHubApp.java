@@ -1,4 +1,5 @@
-package com.JarHubApp;
+package com.JarHubApp; // Assuming this is your package name
+
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
@@ -35,7 +36,7 @@ public class JarHubApp extends JFrame {
 
     private static final String SETTINGS_FILE = "hub_setting.ini";
     private static final String FOLDER_PATH_KEY = "folderPath";
-    private static final int ITEMS_PER_PAGE = 12; // Adjusted for 2 columns (e.g., 6 rows of 2)
+    private static final int ITEMS_PER_PAGE = 12;
 
     private Properties settings;
     private File currentRootFolder;
@@ -53,7 +54,6 @@ public class JarHubApp extends JFrame {
 
     private JButton firstPageButton, prevPageButton, nextPageButton, lastPageButton, upButton;
 
-    // For single instance lock
     private static FileLock lock;
     private static FileChannel channel;
     private static File lockFileHandle;
@@ -62,7 +62,7 @@ public class JarHubApp extends JFrame {
     public JarHubApp() {
         setTitle("JAR Hub Application");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(850, 650); // Slightly wider for 2 columns
+        setSize(850, 650);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
 
@@ -84,8 +84,7 @@ public class JarHubApp extends JFrame {
         setFolderButton.addActionListener(e -> selectAndSetRootFolder());
 
         itemsPanel = new JPanel();
-        // --- IMPROVEMENT: Two-column layout ---
-        itemsPanel.setLayout(new GridLayout(0, 2, 10, 10)); // 0 rows (dynamic), 2 columns, 10px hgap/vgap
+        itemsPanel.setLayout(new GridLayout(0, 2, 10, 10));
         JScrollPane scrollPane = new JScrollPane(itemsPanel);
         scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
@@ -131,19 +130,19 @@ public class JarHubApp extends JFrame {
                         currentPathLabel.setText("Saved path not found: " + folderPath);
                         this.currentRootFolder = null;
                         this.currentDisplayFolder = null;
-                        scanAndDisplayFolder(null); // Clear display
+                        scanAndDisplayFolder(null);
                     }
                 } else {
-                     scanAndDisplayFolder(null); // No path in settings, clear display
+                     scanAndDisplayFolder(null);
                 }
             } catch (IOException e) {
                 JOptionPane.showMessageDialog(this, "Error loading settings: " + e.getMessage(),
                         "Settings Error", JOptionPane.ERROR_MESSAGE);
-                scanAndDisplayFolder(null); // Error, clear display
+                scanAndDisplayFolder(null);
             }
         } else {
             currentPathLabel.setText("No settings file found. Please set a folder.");
-            scanAndDisplayFolder(null); // No settings, clear display
+            scanAndDisplayFolder(null);
         }
         updateUpButtonState();
     }
@@ -190,11 +189,10 @@ public class JarHubApp extends JFrame {
              currentPathLabel.setText("No root folder set. Please set one.");
         } else if (folderToScan == null || !folderToScan.exists() || !folderToScan.isDirectory()) {
             currentPathLabel.setText("Displaying: Invalid Path");
-            itemsPanel.setLayout(new BorderLayout()); // Reset to simple layout for message
+            itemsPanel.setLayout(new BorderLayout());
             itemsPanel.add(new JLabel("Selected folder is invalid or does not exist.", SwingConstants.CENTER), BorderLayout.CENTER);
         } else {
             currentPathLabel.setText("Displaying: " + currentDisplayFolder.getAbsolutePath());
-            // --- Ensure GridLayout is set for item display ---
             itemsPanel.setLayout(new GridLayout(0, 2, 10, 10));
 
             File[] files = folderToScan.listFiles();
@@ -235,10 +233,9 @@ public class JarHubApp extends JFrame {
     }
 
     private void displayCurrentPage() {
-        itemsPanel.removeAll(); // Clear before adding new page items
+        itemsPanel.removeAll();
 
         if (allItemsInCurrentDisplayFolder.isEmpty()) {
-            // Ensure layout is suitable for a single message
             if (!(itemsPanel.getLayout() instanceof BorderLayout)) {
                 itemsPanel.setLayout(new BorderLayout());
             }
@@ -250,19 +247,15 @@ public class JarHubApp extends JFrame {
             }
             itemsPanel.add(new JLabel(message, SwingConstants.CENTER), BorderLayout.CENTER);
         } else {
-            // Ensure GridLayout is active for item display
              if (!(itemsPanel.getLayout() instanceof GridLayout) || ((GridLayout)itemsPanel.getLayout()).getColumns() != 2) {
                 itemsPanel.setLayout(new GridLayout(0, 2, 10, 10));
             }
-
             int startIndex = currentPage * ITEMS_PER_PAGE;
             int endIndex = Math.min(startIndex + ITEMS_PER_PAGE, allItemsInCurrentDisplayFolder.size());
-
             for (int i = startIndex; i < endIndex; i++) {
                 File item = allItemsInCurrentDisplayFolder.get(i);
                 JButton itemButton = new JButton();
                 itemButton.setHorizontalAlignment(SwingConstants.LEFT);
-
                 if (item.isDirectory()) {
                     itemButton.setText("📁 " + item.getName());
                     itemButton.setToolTipText("Open folder: " + item.getName());
@@ -280,7 +273,7 @@ public class JarHubApp extends JFrame {
     }
 
     private void goToPage(int pageNumber) {
-        if (totalPages == 0) { // No items, no pages to go to
+        if (totalPages == 0) {
             currentPage = 0;
         } else if (pageNumber < 0) {
             currentPage = 0;
@@ -293,18 +286,71 @@ public class JarHubApp extends JFrame {
         displayCurrentPage();
     }
 
+    // --- REVISED runJar METHOD ---
     private void runJar(File jarFile) {
         try {
             ProcessBuilder pb = new ProcessBuilder("java", "-jar", jarFile.getAbsolutePath());
-            pb.directory(jarFile.getParentFile());
-            pb.start();
+            pb.directory(jarFile.getParentFile()); // Set working directory for the JAR
+
+            // Log before starting
+            System.out.println("JarHubApp: Attempting to launch JAR: " + jarFile.getAbsolutePath());
+            System.out.println("JarHubApp: Working directory for JAR: " + (jarFile.getParentFile() != null ? jarFile.getParentFile().getAbsolutePath() : "null"));
+
+            final Process process = pb.start(); // Start the process
+
+            // Asynchronously consume the child process's output stream
+            new Thread(() -> {
+                // Using try-with-resources for automatic closing of streams
+                try (InputStream inputStream = process.getInputStream();
+                     java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream))) {
+                    String line;
+                    // Log to JarHubApp's console (if JarHubApp is run from a console)
+                    System.out.println("--- Output from " + jarFile.getName() + " (PID: " + process.pid() + ") ---");
+                    while ((line = reader.readLine()) != null) {
+                        System.out.println("[Child OUT " + jarFile.getName() + "] " + line);
+                    }
+                    System.out.println("--- End Output from " + jarFile.getName() + " ---");
+                } catch (IOException e) {
+                    // This error is for JarHubApp's reading, not the child process itself
+                    // System.err.println("JarHubApp: IOException while reading output stream of " + jarFile.getName() + ": " + e.getMessage());
+                }
+            }).start();
+
+            // Asynchronously consume the child process's error stream
+            new Thread(() -> {
+                try (InputStream errorStream = process.getErrorStream();
+                     java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(errorStream))) {
+                    String line;
+                    System.err.println("--- Error from " + jarFile.getName() + " (PID: " + process.pid() + ") ---");
+                    while ((line = reader.readLine()) != null) {
+                        System.err.println("[Child ERR " + jarFile.getName() + "] " + line);
+                    }
+                    System.err.println("--- End Error from " + jarFile.getName() + " ---");
+                } catch (IOException e) {
+                    // System.err.println("JarHubApp: IOException while reading error stream of " + jarFile.getName() + ": " + e.getMessage());
+                }
+            }).start();
+
+            // Optional: Monitor process completion
+            new Thread(() -> {
+                try {
+                    int exitCode = process.waitFor();
+                    System.out.println("JarHubApp: " + jarFile.getName() + " (PID: " + process.pid() + ") exited with code " + exitCode);
+                } catch (InterruptedException e) {
+                    System.err.println("JarHubApp: Interrupted while waiting for " + jarFile.getName() + " to exit.");
+                    Thread.currentThread().interrupt(); // Preserve interrupt status
+                }
+            }).start();
+
         } catch (IOException e) {
             JOptionPane.showMessageDialog(this,
                     "Error running JAR '" + jarFile.getName() + "':\n" + e.getMessage(),
                     "JAR Execution Error", JOptionPane.ERROR_MESSAGE);
-            e.printStackTrace();
+            System.err.println("JarHubApp: IOException on starting JAR " + jarFile.getName() + ":");
+            e.printStackTrace(); // Print stack trace for JarHubApp's error
         }
     }
+    // --- END REVISED runJar METHOD ---
 
     private void goUpOneLevel() {
         if (currentDisplayFolder != null && currentRootFolder != null &&
@@ -313,9 +359,11 @@ public class JarHubApp extends JFrame {
             if (parent != null && isPathOrSubpath(currentRootFolder.toPath(), parent.toPath())) {
                 scanAndDisplayFolder(parent);
             } else {
+                // If parent is null or not under root, go back to root
                 scanAndDisplayFolder(currentRootFolder);
             }
         } else if (currentRootFolder != null) {
+            // If already at root or currentDisplayFolder is null, ensure we display root
             scanAndDisplayFolder(currentRootFolder);
         }
         updateUpButtonState();
@@ -324,12 +372,10 @@ public class JarHubApp extends JFrame {
     private boolean isPathOrSubpath(Path mainPath, Path potentialSubpath) {
         if (mainPath == null || potentialSubpath == null) return false;
         try {
-            // Resolve to absolute paths to handle relative paths correctly
             Path absoluteMainPath = mainPath.toAbsolutePath().normalize();
             Path absolutePotentialSubpath = potentialSubpath.toAbsolutePath().normalize();
             return absolutePotentialSubpath.startsWith(absoluteMainPath);
         } catch (Exception e) {
-            // IO Error or other issues resolving paths
             return false;
         }
     }
@@ -337,7 +383,7 @@ public class JarHubApp extends JFrame {
     private void updateUpButtonState() {
         if (currentDisplayFolder != null && currentRootFolder != null &&
                 !currentDisplayFolder.getAbsolutePath().equals(currentRootFolder.getAbsolutePath()) &&
-                 isPathOrSubpath(currentRootFolder.toPath(), currentDisplayFolder.toPath()) // Ensure current is actually under root
+                 isPathOrSubpath(currentRootFolder.toPath(), currentDisplayFolder.toPath())
             ) {
             upButton.setEnabled(true);
         } else {
@@ -346,45 +392,29 @@ public class JarHubApp extends JFrame {
     }
 
     private static boolean acquireSingleInstanceLock() {
-        // --- IMPROVEMENT: Single Instance Validation ---
-        // Use a temporary directory for the lock file for better cross-platform compatibility
         String tempDir = System.getProperty("java.io.tmpdir");
-        if (tempDir == null) { // Fallback if temp dir is not available
-            tempDir = "."; // Current directory (less ideal)
+        if (tempDir == null) {
+            tempDir = ".";
         }
         lockFileHandle = new File(tempDir, "JarHubApp.lock");
 
         try {
-            // Create a RandomAccessFile and get its channel
-            // "rw" mode is required for locking
             channel = new RandomAccessFile(lockFileHandle, "rw").getChannel();
-
-            // Try to acquire an exclusive lock on the file channel
             lock = channel.tryLock();
-
             if (lock == null) {
-                // Lock is held by another instance (or was not obtainable)
-                channel.close(); // Close the channel as we couldn't get the lock
+                channel.close();
                 return false;
             }
-
-            // Add a shutdown hook to release the lock and delete the file when the JVM exits
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                releaseSingleInstanceLock();
-            }));
-            return true; // Lock acquired
-
+            Runtime.getRuntime().addShutdownHook(new Thread(JarHubApp::releaseSingleInstanceLock));
+            return true;
         } catch (OverlappingFileLockException e) {
-            // This exception means the lock is already held by another process (or this one, if called twice)
-            // Log or handle: System.err.println("Lock already held (OverlappingFileLockException): " + e.getMessage());
             try { if (channel != null) channel.close(); } catch (IOException ioe) { /* ignore */ }
             return false;
         } catch (IOException e) {
-            // Other IO errors (e.g., permissions, disk full)
             System.err.println("IOException while trying to acquire lock: " + e.getMessage());
-            e.printStackTrace();
+            // e.printStackTrace(); // Usually too verbose for normal operation
             try { if (channel != null) channel.close(); } catch (IOException ioe) { /* ignore */ }
-            return false; // Could not acquire lock due to IO error
+            return false;
         }
     }
 
@@ -396,29 +426,27 @@ public class JarHubApp extends JFrame {
             if (channel != null && channel.isOpen()) {
                 channel.close();
             }
-            // Optionally delete the lock file, though the OS should release the lock on process end.
-            // File deletion ensures a cleaner state if the app is restarted.
             if (lockFileHandle != null && lockFileHandle.exists()) {
                  Files.deleteIfExists(lockFileHandle.toPath());
             }
         } catch (IOException e) {
             System.err.println("Error releasing single instance lock: " + e.getMessage());
-            e.printStackTrace();
+            // e.printStackTrace();
         }
     }
-
 
     public static void main(String[] args) {
         if (!acquireSingleInstanceLock()) {
             JOptionPane.showMessageDialog(null,
                     "Jar Hub Application is already running or the lock file is inaccessible.",
                     "Application Already Running", JOptionPane.WARNING_MESSAGE);
-            System.exit(0);
+            System.exit(0); // Exit if another instance is running
             return;
         }
 
         SwingUtilities.invokeLater(() -> {
             try {
+                // Attempt to set Nimbus Look and Feel for a more modern appearance
                 for (UIManager.LookAndFeelInfo info : UIManager.getInstalledLookAndFeels()) {
                     if ("Nimbus".equals(info.getName())) {
                         UIManager.setLookAndFeel(info.getClassName());
@@ -426,7 +454,9 @@ public class JarHubApp extends JFrame {
                     }
                 }
             } catch (Exception e) {
-                // Nimbus not available, use default.
+                // If Nimbus is not available, the default L&F will be used.
+                // You might want to log this error or just ignore it.
+                // System.err.println("Nimbus L&F not available: " + e.getMessage());
             }
             new JarHubApp().setVisible(true);
         });
