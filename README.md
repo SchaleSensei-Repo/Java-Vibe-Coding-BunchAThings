@@ -10,8 +10,8 @@ my reasons is :
 
 
 Feel free to clone this repo to do something with it
-Maybe for improving this little applications by modify the source code
-Or just to use the application as is. Maybe it can help for a little bit
+ - Maybe for improving this little applications by modify the source code
+ - Or just to use the application as is. Maybe it can help for a little bit
 
 
 These application is grouped inside Application Hub
