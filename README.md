@@ -1,6 +1,8 @@
 # Java-Vibe-Coding-BunchAThings
 A repo for Bunch of small java application
 
+BIG NOTE : All of Java Applications are fully written from AI with some minor changes from me.
+
 
 These application is grouped inside Application Hub
 
