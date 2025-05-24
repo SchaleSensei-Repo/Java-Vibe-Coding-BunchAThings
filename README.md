@@ -20,6 +20,7 @@
 - [Application Hub Features](#application-hub-features)
 - [Available Applications](#available-applications)
 - [Planned/Future Apps](#plannedfuture-apps)
+- [How to Contribute](#how-to-contribute)
 
 ---
 
@@ -40,12 +41,15 @@ Feel free to:
 
 ## License & Usage
 
+This project is licensed under [The Unlicense](https://unlicense.org/) — public domain dedication.
+
 **You are free to:**
-- Clone, modify, distribute, and use this code for any purpose.
+- Clone, modify, distribute, and use this code for any purpose, commercial or non-commercial, without any restrictions.
 
 **No restrictions. No warranty.**  
-If you want to use a formal license, consider [The Unlicense](https://unlicense.org/) or [CC0](https://creativecommons.org/publicdomain/zero/1.0/).  
-> _You do not need to ask permission. Just go build cool stuff!_
+You do not need to ask permission. Just go build cool stuff!
+
+See the [LICENSE](./LICENSE) file for more details.
 
 ---
 
@@ -126,13 +130,18 @@ _None at the moment. Suggestions welcome!_
 
 ---
 
-**Enjoy exploring these Java mini-projects!**
+## How to Contribute
+
+Contributions are very welcome!
+
+1. Fork this repository.
+2. Create a new branch for your feature or fix.
+3. Make your changes and commit them with clear messages.
+4. Open a Pull Request describing what you’ve done.
+5. I’ll review and merge it if everything looks good!
+
+You can also open Issues for bugs, ideas, or questions.
 
 ---
 
-## License
-
-This project is licensed under [The Unlicense](https://unlicense.org/) — public domain dedication.  
-You can freely use, modify, and distribute this code for any purpose, commercial or non-commercial, without any restrictions.
-
-See the [LICENSE](./LICENSE) file for more details.
+**Enjoy exploring these Java mini-projects!**
