@@ -96,9 +96,11 @@ See the [LICENSE](./LICENSE) file for more details.
 - Hotseat multiplayer with randomized ship positions
 
 ### 7. Deal or No Deal _(Fun/Entertainment)_
-- Customizable bags and score ranges
+- Customizable bags quantity and prize ranges
+- Customizable banker offering frequency and prize range
 - Change bags mid-game
 - Track or hide bag values
+- _(Planned: Customizable banker offering bias prize range and option to disable it)_
 
 ### 8. Slot Machine _(Fun/Entertainment)_
 - Customizable starting points, payment, multipliers, and payout lines
