@@ -122,6 +122,16 @@ See the [LICENSE](./LICENSE) file for more details.
 - Custom initial/additional/subtraction scores
 - Logs and totals
 
+### 13. Warp Game (Snake and Ladder variant)
+- Have score and lives system
+- Customizable initial score and initial life
+- Solo or Multiplayer hotseat with other human players or computers
+- Have various tile effects beside snake and ladder
+- Most of various tile effects are customizable
+- Local leaderboard when the game ends
+- Customizable dice/die (can change the quantity and the number of side)
+- Customizable the number of tiles for playing field
+
 ---
 
 ## Planned/Future Apps
