@@ -133,6 +133,7 @@ See the [LICENSE](./LICENSE) file for more details.
 - Local leaderboard when the game ends
 - Customizable dice/die (can change the quantity and the number of side)
 - Customizable the number of tiles for playing field
+- Option to have penalty if the points goes into negative value
 
 ---
 
