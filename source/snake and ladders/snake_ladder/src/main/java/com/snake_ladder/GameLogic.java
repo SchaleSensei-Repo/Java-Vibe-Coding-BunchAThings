@@ -20,7 +20,7 @@ public class GameLogic {
     private boolean gameStarted = false;
     private boolean gameOver = false;
     private boolean processingAiTurn = false;
-    private int nextEliminationOrder = 1; // Counter for elimination sequence
+    private int nextEliminationOrder = 1;
 
 
     private static final Color[] PLAYER_COLORS = {
@@ -51,7 +51,7 @@ public class GameLogic {
         gameOver = false;
         gameStarted = true;
         processingAiTurn = false;
-        nextEliminationOrder = 1; // Reset for new game
+        nextEliminationOrder = 1;
         players.clear();
         for (int i = 0; i < settings.numPlayers; i++) {
             Player p = new Player(
@@ -60,7 +60,7 @@ public class GameLogic {
                 settings.initialLives,
                 settings.playerIsHuman[i],
                 PLAYER_COLORS[i % PLAYER_COLORS.length],
-                this.settings
+                this.settings // Pass GameSettings
             );
             players.add(p);
         }
@@ -117,9 +117,7 @@ public class GameLogic {
 
     public int rollDice() {
         Player currentPlayer = getCurrentPlayer();
-        if (gameOver || !gameStarted || currentPlayer == null) {
-            return 0;
-        }
+        if (gameOver || !gameStarted || currentPlayer == null) return 0;
         int totalRoll = 0;
         StringBuilder rollDetails = new StringBuilder("Rolled: ");
         for (int i = 0; i < settings.numDice; i++) {
@@ -147,14 +145,20 @@ public class GameLogic {
         } else {
             currentPlayer.setCurrentTileIndex(newTileIndex);
             log(currentPlayer.getName() + " moved to tile " + currentPlayer.getCurrentTileNumber());
-            applyTileEffect(currentPlayer, board.get(newTileIndex));
+            applyTileEffect(currentPlayer, board.get(newTileIndex)); // This might change points
         }
+
+        // Apply negative point penalties if game is not over from the move itself
+        if (!gameOver) {
+            checkAndApplyNegativePointPenalties(currentPlayer); // This might set gameOver if player eliminated
+        }
+        
         if (gui != null) gui.updateGameDisplay();
         return gameOver;
     }
 
     public void humanPlayerTurn(int diceRoll) {
-        if (processPlayerMove(diceRoll)) {
+        if (processPlayerMove(diceRoll)) { // processPlayerMove now includes penalty check
             determineWinnerAndShowDialog();
         } else {
             nextTurn();
@@ -200,8 +204,9 @@ public class GameLogic {
                 log(player.getName() + " gained " + value + " points. Total: " + player.getFormattedPoints());
                 break;
             case TAKE_POINTS:
-                player.takePoints(value);
+                player.takePoints(value); // Player.takePoints just subtracts
                 log(player.getName() + " lost " + value + " points. Total: " + player.getFormattedPoints());
+                // Penalty check will happen after processPlayerMove calls checkAndApplyNegativePointPenalties
                 break;
             case GIVE_LIFE: player.addLife(); log(player.getName() + " gained a life. Lives: " + player.getLives()); break;
             case TAKE_LIFE: player.takeLife(); log(player.getName() + " lost a life. Lives: " + player.getLives()); checkElimination(player); break;
@@ -215,16 +220,61 @@ public class GameLogic {
         }
     }
 
+    private void checkAndApplyNegativePointPenalties(Player player) {
+        if (player == null || player.isEliminated() || player.getPoints() >= 0) {
+            return; // No penalty needed or player already out
+        }
+
+        log(player.getName() + " has negative points (" + player.getFormattedPoints() + "). Applying penalty as per rule: " + settings.negativePointsPenaltyRule);
+
+        boolean lifeLost = false;
+        switch (settings.negativePointsPenaltyRule) {
+            case ALLOW_NEGATIVE:
+                // If the rule is ALLOW_NEGATIVE, we then check the legacy boolean 'allowNegativePoints'.
+                // If 'allowNegativePoints' is false, then clamp to 0. Otherwise, negatives are truly allowed.
+                if (!settings.allowNegativePoints) {
+                    log(player.getName() + "'s points clamped to 0 (legacy allowNegativePoints=false).");
+                    player.setPoints(0);
+                } else {
+                     log(player.getName() + "'s points remain negative as per settings.");
+                }
+                break;
+
+            case LOSE_LIFE_RESET_POINTS:
+                log(player.getName() + " loses a life and points reset to 0.");
+                player.takeLife();
+                lifeLost = true;
+                player.setPoints(0);
+                break;
+
+            case LOSE_LIFE_RESET_POINTS_TO_START:
+                log(player.getName() + " loses a life, points reset to 0, and goes to Start.");
+                player.takeLife();
+                lifeLost = true;
+                player.setPoints(0);
+                player.setCurrentTileIndex(0);
+                break;
+        }
+        
+        if (lifeLost) {
+            checkElimination(player); // Check if losing a life eliminated them
+        }
+
+        if (gui != null) {
+            gui.updateGameDisplay(); // Update UI after penalty
+        }
+    }
+
+
     private void checkElimination(Player player) {
         if (player.getLives() <= 0) {
             if (settings.respawnEliminatedPlayers) {
                 log(player.getName() + " ran out of lives! Respawning at start.");
-                player.respawn(); // Resets eliminationOrder inside player
+                player.respawn();
                  if (gui != null) gui.updateGameDisplay();
             } else {
-                // Only set elimination order if they are newly eliminated
                 if (!player.isEliminated()) {
-                    player.setEliminated(true, nextEliminationOrder++); // Pass current order and increment
+                    player.setEliminated(true, nextEliminationOrder++);
                     log(player.getName() + " ran out of lives and is ELIMINATED! (Order: " + player.getEliminationOrder() + ")");
                 }
                 checkSinglePlayerRemaining();
@@ -311,7 +361,7 @@ public class GameLogic {
                 try {
                     if (!gameOver) {
                         int aiRoll = rollDice();
-                        endedByThisAiTurn = processPlayerMove(aiRoll);
+                        endedByThisAiTurn = processPlayerMove(aiRoll); // processPlayerMove includes penalty check
                     } else {
                         endedByThisAiTurn = true;
                     }
@@ -344,7 +394,6 @@ public class GameLogic {
         if (gui == null) { return; }
         if (gui.isGameOverDialogShowing()) { return; }
 
-        // 1. Determine Overall Winner
         Player overallWinner = null;
         List<Player> tempPlayerListForWinnerDet = new ArrayList<>(players);
         Collections.sort(tempPlayerListForWinnerDet, Comparator
@@ -364,11 +413,10 @@ public class GameLogic {
                     }
                     return tempPlayerListForWinnerDet.stream().filter(p -> !p.isEliminated()).findFirst().orElse(null);
                 });
-        } else { // MOST_POINTS_AT_FINISH
+        } else {
             overallWinner = tempPlayerListForWinnerDet.stream().filter(p -> !p.isEliminated()).findFirst().orElse(null);
         }
 
-        // 2. Prepare Leaderboard List
         List<Player> leaderboardList = new ArrayList<>();
         final Player finalOverallWinner = overallWinner;
 
@@ -379,12 +427,10 @@ public class GameLogic {
         List<Player> remainingActivePlayers = players.stream()
             .filter(p -> !p.isEliminated() && p != finalOverallWinner)
             .collect(Collectors.toList());
-
         List<Player> eliminatedPlayers = players.stream()
-            .filter(Player::isEliminated) // No need to check against finalOverallWinner here, already excluded or handled
+            .filter(Player::isEliminated)
             .collect(Collectors.toList());
 
-        // Sort remaining active players
         Collections.sort(remainingActivePlayers, Comparator
             .comparingInt(Player::getPoints).reversed()
             .thenComparingInt(Player::getLives).reversed()
@@ -392,37 +438,31 @@ public class GameLogic {
         );
         leaderboardList.addAll(remainingActivePlayers);
 
-        // Sort eliminated players: Points (desc) -> Lives (desc) -> Tile Index (desc) -> Elimination Order (asc)
         Collections.sort(eliminatedPlayers, Comparator
             .comparingInt(Player::getPoints).reversed()
             .thenComparingInt(Player::getLives).reversed()
             .thenComparingInt(Player::getCurrentTileIndex).reversed()
-            .thenComparingInt(Player::getEliminationOrder) // Lower number (earlier) means worse rank
+            .thenComparingInt(Player::getEliminationOrder)
         );
         leaderboardList.addAll(eliminatedPlayers);
 
         log("Final Leaderboard Order (Size: " + leaderboardList.size() + "):");
         if (leaderboardList.isEmpty() && (players != null && !players.isEmpty())) {
             log("LeaderboardList is empty, but players list is not. Creating fallback list.");
-             // Create a fully sorted list as a fallback if the primary logic resulted in an empty list somehow
             List<Player> fallbackList = new ArrayList<>(players);
-            // This complex comparator first puts non-eliminated players before eliminated ones.
-            // Then sorts non-eliminated by points/lives/tile.
-            // Then sorts eliminated by points/lives/tile/eliminationOrder.
             Collections.sort(fallbackList, 
-                Comparator.comparing(Player::isEliminated) // false (active) before true (eliminated)
+                Comparator.comparing(Player::isEliminated)
                 .thenComparing(Player::getPoints, Comparator.reverseOrder())
                 .thenComparing(Player::getLives, Comparator.reverseOrder())
                 .thenComparing(Player::getCurrentTileIndex, Comparator.reverseOrder())
                 .thenComparing(Player::getEliminationOrder) 
             );
-            // If overallWinner was determined, ensure they are at the top of this fallback.
             if (finalOverallWinner != null) {
                 fallbackList.remove(finalOverallWinner);
                 fallbackList.add(0, finalOverallWinner);
             }
-            leaderboardList.clear(); // Clear whatever was (not) there
-            leaderboardList.addAll(fallbackList); // Use the more robust fallback
+            leaderboardList.clear();
+            leaderboardList.addAll(fallbackList);
         } else if (leaderboardList.isEmpty() && (players == null || players.isEmpty())) {
             log("LeaderboardList and players list are both empty. Nothing to rank.");
         }
@@ -439,7 +479,7 @@ public class GameLogic {
         } else {
             winnerMessageText = "Game Over! No clear winner.";
         }
-        // log(winnerMessageText); // Already logged earlier or implicitly by overall winner
+        log(winnerMessageText);
 
         final String finalWinnerMessageText = winnerMessageText;
         final List<Player> finalLeaderboardListForDialog = leaderboardList;

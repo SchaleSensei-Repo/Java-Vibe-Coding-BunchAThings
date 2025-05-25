@@ -19,7 +19,6 @@ public class SettingsDialog extends JDialog {
     private JTextField[] playerNamesFields = new JTextField[8];
     private JPanel playerSettingsPanel;
 
-
     // Tile effect value fields
     private JSpinner wfMin, wfMax, wfStaticVal; private JCheckBox wfStaticCheck;
     private JSpinner wbMin, wbMax, wbStaticVal; private JCheckBox wbStaticCheck;
@@ -32,14 +31,17 @@ public class SettingsDialog extends JDialog {
     // Game rules
     private JRadioButton winFirstToFinishRadio, winMostPointsRadio;
     private JCheckBox respawnCheck, instantFinishCheck;
-    private JCheckBox allowNegativePointsCheck; // ADDED
+    private JCheckBox allowNegativePointsCheck; // Kept for legacy, could be removed/managed
+    private JRadioButton penaltyAllowNegativeRadio;
+    private JRadioButton penaltyLoseLifeResetRadio;
+    private JRadioButton penaltyLoseLifeResetToStartRadio;
 
 
     public SettingsDialog(Frame owner, GameSettings settings) {
         super(owner, "Game Settings", true);
         this.settings = settings;
         setLayout(new BorderLayout());
-        setSize(700, 850); 
+        setSize(700, 900); // Adjusted height for new options
         setLocationRelativeTo(owner);
 
         JTabbedPane tabbedPane = new JTabbedPane();
@@ -84,7 +86,7 @@ public class SettingsDialog extends JDialog {
         gridy++;
 
         gbc.gridx = 0; gbc.gridy = gridy; panel.add(new JLabel("Initial Points:"), gbc);
-        initialPointsSpinner = new JSpinner(new SpinnerNumberModel(settings.initialPoints, 0, 1000000, 1));
+        initialPointsSpinner = new JSpinner(new SpinnerNumberModel(settings.initialPoints, 0, Integer.MAX_VALUE, 1)); 
         gbc.gridx = 1; panel.add(initialPointsSpinner, gbc);
         gridy++;
 
@@ -140,51 +142,61 @@ public class SettingsDialog extends JDialog {
     private JPanel createTileEffectsPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(2,2,2,2);
+        gbc.insets = new Insets(2, 5, 2, 5);
         gbc.anchor = GridBagConstraints.WEST;
         int gridy = 0;
 
-        gbc.gridx=0; gbc.gridy=gridy; panel.add(new JLabel("Warp Forward:"), gbc);
-        wfMin = new JSpinner(new SpinnerNumberModel(settings.warpForwardMin,1,50,1)); 
+        gbc.gridy = gridy;
+        gbc.gridx = 1; panel.add(new JLabel("Min Value"), gbc);
+        gbc.gridx = 2; panel.add(new JLabel("Max Value"), gbc);
+        gbc.gridx = 4; panel.add(new JLabel("Static Value"), gbc);
+        gridy++;
+
+        gbc.gridy = gridy;
+        gbc.gridx=0; panel.add(new JLabel("Warp Forward:"), gbc);
+        wfMin = new JSpinner(new SpinnerNumberModel(settings.warpForwardMin,1,999,1)); 
         gbc.gridx=1; panel.add(wfMin, gbc);
-        wfMax = new JSpinner(new SpinnerNumberModel(settings.warpForwardMax,1,50,1)); 
+        wfMax = new JSpinner(new SpinnerNumberModel(settings.warpForwardMax,1,999,1)); 
         gbc.gridx=2; panel.add(wfMax, gbc);
         wfStaticCheck = new JCheckBox("Static", settings.warpForwardStatic); 
         gbc.gridx=3; panel.add(wfStaticCheck, gbc);
-        wfStaticVal = new JSpinner(new SpinnerNumberModel(settings.warpForwardStaticValue,1,50,1)); 
+        wfStaticVal = new JSpinner(new SpinnerNumberModel(settings.warpForwardStaticValue,1,999,1)); 
         gbc.gridx=4; panel.add(wfStaticVal, gbc);
         gridy++;
 
-        gbc.gridx=0; gbc.gridy=gridy; panel.add(new JLabel("Warp Backward:"), gbc);
-        wbMin = new JSpinner(new SpinnerNumberModel(settings.warpBackwardMin,1,50,1)); 
+        gbc.gridy = gridy;
+        gbc.gridx=0; panel.add(new JLabel("Warp Backward:"), gbc);
+        wbMin = new JSpinner(new SpinnerNumberModel(settings.warpBackwardMin,1,999,1)); 
         gbc.gridx=1; panel.add(wbMin, gbc);
-        wbMax = new JSpinner(new SpinnerNumberModel(settings.warpBackwardMax,1,50,1)); 
+        wbMax = new JSpinner(new SpinnerNumberModel(settings.warpBackwardMax,1,999,1)); 
         gbc.gridx=2; panel.add(wbMax, gbc);
         wbStaticCheck = new JCheckBox("Static", settings.warpBackwardStatic); 
         gbc.gridx=3; panel.add(wbStaticCheck, gbc);
-        wbStaticVal = new JSpinner(new SpinnerNumberModel(settings.warpBackwardStaticValue,1,50,1)); 
+        wbStaticVal = new JSpinner(new SpinnerNumberModel(settings.warpBackwardStaticValue,1,999,1)); 
         gbc.gridx=4; panel.add(wbStaticVal, gbc);
         gridy++;
 
-        gbc.gridx=0; gbc.gridy=gridy; panel.add(new JLabel("Give Points:"), gbc);
-        gpMin = new JSpinner(new SpinnerNumberModel(settings.givePointsMin,1,5000,1)); 
+        gbc.gridy = gridy;
+        gbc.gridx=0; panel.add(new JLabel("Give Points:"), gbc);
+        gpMin = new JSpinner(new SpinnerNumberModel(settings.givePointsMin,1, Integer.MAX_VALUE,1)); 
         gbc.gridx=1; panel.add(gpMin, gbc);
-        gpMax = new JSpinner(new SpinnerNumberModel(settings.givePointsMax,1,5000,1)); 
+        gpMax = new JSpinner(new SpinnerNumberModel(settings.givePointsMax,1, Integer.MAX_VALUE,1)); 
         gbc.gridx=2; panel.add(gpMax, gbc);
         gpStaticCheck = new JCheckBox("Static", settings.givePointsStatic); 
         gbc.gridx=3; panel.add(gpStaticCheck, gbc);
-        gpStaticVal = new JSpinner(new SpinnerNumberModel(settings.givePointsStaticValue,1,5000,1)); 
+        gpStaticVal = new JSpinner(new SpinnerNumberModel(settings.givePointsStaticValue,1, Integer.MAX_VALUE,1)); 
         gbc.gridx=4; panel.add(gpStaticVal, gbc);
         gridy++;
 
-        gbc.gridx=0; gbc.gridy=gridy; panel.add(new JLabel("Take Points:"), gbc);
-        tpMin = new JSpinner(new SpinnerNumberModel(settings.takePointsMin,1,5000,1)); 
+        gbc.gridy = gridy;
+        gbc.gridx=0; panel.add(new JLabel("Take Points:"), gbc);
+        tpMin = new JSpinner(new SpinnerNumberModel(settings.takePointsMin,1, Integer.MAX_VALUE,1)); 
         gbc.gridx=1; panel.add(tpMin, gbc);
-        tpMax = new JSpinner(new SpinnerNumberModel(settings.takePointsMax,1,5000,1)); 
+        tpMax = new JSpinner(new SpinnerNumberModel(settings.takePointsMax,1, Integer.MAX_VALUE,1)); 
         gbc.gridx=2; panel.add(tpMax, gbc);
         tpStaticCheck = new JCheckBox("Static", settings.takePointsStatic); 
         gbc.gridx=3; panel.add(tpStaticCheck, gbc);
-        tpStaticVal = new JSpinner(new SpinnerNumberModel(settings.takePointsStaticValue,1,5000,1)); 
+        tpStaticVal = new JSpinner(new SpinnerNumberModel(settings.takePointsStaticValue,1, Integer.MAX_VALUE,1)); 
         gbc.gridx=4; panel.add(tpStaticVal, gbc);
         
         wfStaticVal.setEnabled(wfStaticCheck.isSelected());
@@ -204,10 +216,7 @@ public class SettingsDialog extends JDialog {
         for (TileEffect effect : TileEffect.getRandomizableEffects()) {
             panel.add(new JLabel(effect.getDisplayName() + " Weight:"));
             int initialValue = settings.tileProbabilities.getOrDefault(effect, 10);
-            int minValue = 0;
-            int maxValue = 100;
-            int stepSize = 1;
-            SpinnerNumberModel model = new SpinnerNumberModel(initialValue, minValue, maxValue, stepSize);
+            SpinnerNumberModel model = new SpinnerNumberModel(initialValue, 0, 100, 1);
             JSpinner spinner = new JSpinner(model);
             probabilitySpinners.put(effect, spinner);
             panel.add(spinner);
@@ -241,8 +250,37 @@ public class SettingsDialog extends JDialog {
         gbc.gridx = 0; gbc.gridy = gridy; gbc.gridwidth = 2; panel.add(instantFinishCheck, gbc);
         gridy++;
 
-        allowNegativePointsCheck = new JCheckBox("Allow points to go into negative values", settings.allowNegativePoints); // Initialize with setting
+        // --- Handling Negative Points ---
+        gbc.gridx = 0; gbc.gridy = gridy; gbc.gridwidth = 2;
+        panel.add(new JLabel("If Player Points Go Negative:"), gbc);
+        gridy++;
+
+        penaltyAllowNegativeRadio = new JRadioButton("Allow negative points (no direct penalty)", settings.negativePointsPenaltyRule == GameSettings.NegativePointsPenalty.ALLOW_NEGATIVE);
+        penaltyLoseLifeResetRadio = new JRadioButton("Lose 1 life, points reset to 0", settings.negativePointsPenaltyRule == GameSettings.NegativePointsPenalty.LOSE_LIFE_RESET_POINTS);
+        penaltyLoseLifeResetToStartRadio = new JRadioButton("Lose 1 life, points reset to 0, go to Start tile", settings.negativePointsPenaltyRule == GameSettings.NegativePointsPenalty.LOSE_LIFE_RESET_POINTS_TO_START);
+
+        ButtonGroup penaltyGroup = new ButtonGroup();
+        penaltyGroup.add(penaltyAllowNegativeRadio);
+        penaltyGroup.add(penaltyLoseLifeResetRadio);
+        penaltyGroup.add(penaltyLoseLifeResetToStartRadio);
+
+        gbc.gridx = 0; gbc.gridy = gridy; gbc.gridwidth = 2; panel.add(penaltyAllowNegativeRadio, gbc);
+        gridy++;
+        gbc.gridx = 0; gbc.gridy = gridy; gbc.gridwidth = 2; panel.add(penaltyLoseLifeResetRadio, gbc);
+        gridy++;
+        gbc.gridx = 0; gbc.gridy = gridy; gbc.gridwidth = 2; panel.add(penaltyLoseLifeResetToStartRadio, gbc);
+        gridy++;
+
+        allowNegativePointsCheck = new JCheckBox("Allow points to be negative (legacy, if 'no direct penalty' is chosen above)", settings.allowNegativePoints);
+        // This checkbox is now effectively a sub-option for the "ALLOW_NEGATIVE" penalty.
+        // It only matters if the "Allow negative points (no direct penalty)" radio is selected.
+        allowNegativePointsCheck.setEnabled(penaltyAllowNegativeRadio.isSelected());
+        penaltyAllowNegativeRadio.addActionListener(e -> allowNegativePointsCheck.setEnabled(penaltyAllowNegativeRadio.isSelected()));
+        penaltyLoseLifeResetRadio.addActionListener(e -> allowNegativePointsCheck.setEnabled(penaltyAllowNegativeRadio.isSelected())); // also enable for this
+        penaltyLoseLifeResetToStartRadio.addActionListener(e -> allowNegativePointsCheck.setEnabled(penaltyAllowNegativeRadio.isSelected())); // and this.
+
         gbc.gridx = 0; gbc.gridy = gridy; gbc.gridwidth = 2; panel.add(allowNegativePointsCheck, gbc);
+
 
         return panel;
     }
@@ -292,7 +330,17 @@ public class SettingsDialog extends JDialog {
         }
         respawnCheck.setSelected(settings.respawnEliminatedPlayers);
         instantFinishCheck.setSelected(settings.instantFinishIfOneLeft);
-        allowNegativePointsCheck.setSelected(settings.allowNegativePoints); // ADDED
+        
+        // Load penalty settings
+        if (settings.negativePointsPenaltyRule == GameSettings.NegativePointsPenalty.ALLOW_NEGATIVE) {
+            penaltyAllowNegativeRadio.setSelected(true);
+        } else if (settings.negativePointsPenaltyRule == GameSettings.NegativePointsPenalty.LOSE_LIFE_RESET_POINTS) {
+            penaltyLoseLifeResetRadio.setSelected(true);
+        } else if (settings.negativePointsPenaltyRule == GameSettings.NegativePointsPenalty.LOSE_LIFE_RESET_POINTS_TO_START) {
+            penaltyLoseLifeResetToStartRadio.setSelected(true);
+        }
+        allowNegativePointsCheck.setSelected(settings.allowNegativePoints);
+        allowNegativePointsCheck.setEnabled(penaltyAllowNegativeRadio.isSelected()); // Update enabled state
     }
 
     private void applySettings() {
@@ -325,7 +373,16 @@ public class SettingsDialog extends JDialog {
         settings.winCondition = winFirstToFinishRadio.isSelected() ? GameSettings.WinCondition.FIRST_TO_FINISH : GameSettings.WinCondition.MOST_POINTS_AT_FINISH;
         settings.respawnEliminatedPlayers = respawnCheck.isSelected();
         settings.instantFinishIfOneLeft = instantFinishCheck.isSelected();
-        settings.allowNegativePoints = allowNegativePointsCheck.isSelected(); // ADDED
+        
+        // Apply penalty settings
+        if (penaltyAllowNegativeRadio.isSelected()) {
+            settings.negativePointsPenaltyRule = GameSettings.NegativePointsPenalty.ALLOW_NEGATIVE;
+        } else if (penaltyLoseLifeResetRadio.isSelected()) {
+            settings.negativePointsPenaltyRule = GameSettings.NegativePointsPenalty.LOSE_LIFE_RESET_POINTS;
+        } else if (penaltyLoseLifeResetToStartRadio.isSelected()) {
+            settings.negativePointsPenaltyRule = GameSettings.NegativePointsPenalty.LOSE_LIFE_RESET_POINTS_TO_START;
+        }
+        settings.allowNegativePoints = allowNegativePointsCheck.isSelected();
 
         settings.saveSettings();
     }

@@ -14,8 +14,8 @@ public class Player {
     private boolean isEliminated;
     private int initialLives;
     private int initialPoints;
-    private GameSettings gameSettings;
-    private int eliminationOrder = Integer.MAX_VALUE; // Higher value means not eliminated or eliminated later
+    private GameSettings gameSettingsRef; // Reference to game settings
+    private int eliminationOrder = Integer.MAX_VALUE;
 
     public Player(String name, int initialPoints, int initialLives, boolean isHuman, Color color, GameSettings settings) {
         this.name = name;
@@ -27,23 +27,24 @@ public class Player {
         this.isHuman = isHuman;
         this.color = color;
         this.isEliminated = false;
-        this.gameSettings = settings;
+        this.gameSettingsRef = settings; // Store settings reference
     }
 
     public String getName() { return name; }
     public int getPoints() { return points; }
     public void addPoints(int amount) { this.points += amount; }
 
+    // Simplified: just subtracts points. GameLogic handles penalties/clamping.
     public void takePoints(int amount) {
         this.points -= amount;
-        if (gameSettings != null && !gameSettings.allowNegativePoints) {
-            if (this.points < 0) {
-                this.points = 0;
-            }
-        }
     }
     
-    public void resetPoints() { this.points = initialPoints; }
+    // Method to directly set points to a value (e.g., 0)
+    public void setPoints(int newPoints) {
+        this.points = newPoints;
+    }
+    
+    public void resetPoints() { this.points = initialPoints; } // Resets to initial configured points
     public int getLives() { return lives; }
     public void addLife() { this.lives++; }
 
@@ -61,29 +62,22 @@ public class Player {
     public void setColor(Color color) { this.color = color; }
     public boolean isEliminated() { return isEliminated; }
 
-    // Modified to accept elimination order
     public void setEliminated(boolean eliminated, int eliminationOrderNumber) {
         this.isEliminated = eliminated;
         if (eliminated) {
-            // Only set if not already set to a lower (earlier) order.
-            // This prevents overwriting an earlier elimination if somehow called multiple times for the same elimination event.
-            if (this.eliminationOrder == Integer.MAX_VALUE) {
+            if (this.eliminationOrder == Integer.MAX_VALUE) { // Only set if not already set
                  this.eliminationOrder = eliminationOrderNumber;
             }
         } else {
-            this.eliminationOrder = Integer.MAX_VALUE; // Reset if un-eliminated (e.g., respawn)
+            this.eliminationOrder = Integer.MAX_VALUE;
         }
     }
     
-    // Overload for simple setEliminated(true) without explicit order (e.g. initial state if needed)
-    // However, game logic should always use the one with order for actual elimination events.
-    public void setEliminated(boolean eliminated) {
+    public void setEliminated(boolean eliminated) { // Overload for simpler calls if order not relevant
         this.isEliminated = eliminated;
         if (!eliminated) {
             this.eliminationOrder = Integer.MAX_VALUE;
         }
-        // If setting to true without an order, it implies it's not part of the game's sequence.
-        // For actual game eliminations, the GameLogic should call the version with eliminationOrderNumber.
     }
     
     public int getEliminationOrder() {
@@ -95,7 +89,7 @@ public class Player {
         this.points = initialPoints;
         this.lives = initialLives;
         this.isEliminated = false;
-        this.eliminationOrder = Integer.MAX_VALUE; // Reset on respawn
+        this.eliminationOrder = Integer.MAX_VALUE;
     }
 
     public String getFormattedPoints() {

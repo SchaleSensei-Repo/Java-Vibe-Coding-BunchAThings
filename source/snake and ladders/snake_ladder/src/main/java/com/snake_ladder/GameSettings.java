@@ -19,7 +19,14 @@ public class GameSettings {
     public int initialPoints = 1000;
     public boolean[] playerIsHuman = new boolean[8];
     public String[] playerNames = new String[8];
-    public boolean allowNegativePoints = true; // ADDED
+    public boolean allowNegativePoints = true;
+
+    public enum NegativePointsPenalty {
+        ALLOW_NEGATIVE,
+        LOSE_LIFE_RESET_POINTS,
+        LOSE_LIFE_RESET_POINTS_TO_START
+    }
+    public NegativePointsPenalty negativePointsPenaltyRule = NegativePointsPenalty.ALLOW_NEGATIVE;
 
     // Dice settings
     public int numDice = 1;
@@ -40,13 +47,13 @@ public class GameSettings {
     public boolean warpBackwardStatic = false;
     public int warpBackwardStaticValue = 10;
 
-    public int givePointsMin = 100;
-    public int givePointsMax = 1000;
+    public int givePointsMin = 1;
+    public int givePointsMax = 1000; // CHANGED Default Max
     public boolean givePointsStatic = false;
     public int givePointsStaticValue = 500;
 
-    public int takePointsMin = 100;
-    public int takePointsMax = 1000;
+    public int takePointsMin = 1;
+    public int takePointsMax = 1000; // CHANGED Default Max
     public boolean takePointsStatic = false;
     public int takePointsStaticValue = 500;
 
@@ -79,7 +86,8 @@ public class GameSettings {
         initialPoints = 1000;
         Arrays.fill(playerIsHuman, true);
         for(int i=0; i < playerNames.length; i++) playerNames[i] = "Player " + (i+1);
-        allowNegativePoints = true; // ADDED Default for reset
+        allowNegativePoints = true;
+        negativePointsPenaltyRule = NegativePointsPenalty.ALLOW_NEGATIVE;
 
         numDice = 1;
         numSidesPerDie = 6;
@@ -88,8 +96,9 @@ public class GameSettings {
 
         warpForwardMin = 1; warpForwardMax = 25; warpForwardStatic = false; warpForwardStaticValue = 10;
         warpBackwardMin = 1; warpBackwardMax = 25; warpBackwardStatic = false; warpBackwardStaticValue = 10;
-        givePointsMin = 100; givePointsMax = 1000; givePointsStatic = false; givePointsStaticValue = 500;
-        takePointsMin = 100; takePointsMax = 1000; takePointsStatic = false; takePointsStaticValue = 500;
+        // CHANGED Default Max for points effects
+        givePointsMin = 1; givePointsMax = 1000; givePointsStatic = false; givePointsStaticValue = 500;
+        takePointsMin = 1; takePointsMax = 1000; takePointsStatic = false; takePointsStaticValue = 500;
         
         loadDefaultProbabilities();
 
@@ -111,7 +120,13 @@ public class GameSettings {
                 playerIsHuman[i] = Boolean.parseBoolean(props.getProperty("playerIsHuman" + i, String.valueOf(playerIsHuman[i])));
                 playerNames[i] = props.getProperty("playerName" + i, playerNames[i]);
             }
-            allowNegativePoints = Boolean.parseBoolean(props.getProperty("allowNegativePoints", String.valueOf(allowNegativePoints))); // ADDED
+            allowNegativePoints = Boolean.parseBoolean(props.getProperty("allowNegativePoints", String.valueOf(allowNegativePoints)));
+            try {
+                negativePointsPenaltyRule = NegativePointsPenalty.valueOf(props.getProperty("negativePointsPenaltyRule", NegativePointsPenalty.ALLOW_NEGATIVE.name()));
+            } catch (IllegalArgumentException e) {
+                negativePointsPenaltyRule = NegativePointsPenalty.ALLOW_NEGATIVE;
+                System.err.println("Warning: Invalid negativePointsPenaltyRule in settings, defaulting to ALLOW_NEGATIVE.");
+            }
 
             numDice = Integer.parseInt(props.getProperty("numDice", String.valueOf(numDice)));
             numSidesPerDie = Integer.parseInt(props.getProperty("numSidesPerDie", String.valueOf(numSidesPerDie)));
@@ -163,7 +178,8 @@ public class GameSettings {
             props.setProperty("playerIsHuman" + i, String.valueOf(playerIsHuman[i]));
             props.setProperty("playerName" + i, playerNames[i]);
         }
-        props.setProperty("allowNegativePoints", String.valueOf(allowNegativePoints)); // ADDED
+        props.setProperty("allowNegativePoints", String.valueOf(allowNegativePoints));
+        props.setProperty("negativePointsPenaltyRule", negativePointsPenaltyRule.name());
 
         props.setProperty("numDice", String.valueOf(numDice));
         props.setProperty("numSidesPerDie", String.valueOf(numSidesPerDie));

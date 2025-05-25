@@ -6,22 +6,22 @@ import java.util.List;
 
 public class BoardPanel extends JPanel {
     private GameLogic gameLogic;
-    private static final int MIN_TILE_SIZE = 50;
+    private static final int MIN_TILE_SIZE = 50; 
     private int actualTileWidth = MIN_TILE_SIZE;
     private int actualTileHeight = MIN_TILE_SIZE;
-    private boolean dimensionsRecalculated = false;
-    private boolean lastHideSettingState = false;
-    private static final int TEXT_PADDING = 5;
+    private boolean dimensionsRecalculated = false; 
+    private boolean lastHideSettingState = false; 
+    private static final int TEXT_PADDING = 5; 
     private static final int PLAYER_DOT_BASE_SIZE = 10;
 
-    private int tilesPerRow = 10;
+    private int tilesPerRow = 10; 
 
     public BoardPanel(GameLogic gameLogic) {
         this.gameLogic = gameLogic;
         setPreferredSize(new Dimension(MIN_TILE_SIZE * 10, MIN_TILE_SIZE * 10));
-        resetDimensionsRecalculatedFlag();
+        resetDimensionsRecalculatedFlag(); 
     }
-
+    
     public void resetDimensionsRecalculatedFlag() {
         this.dimensionsRecalculated = false;
     }
@@ -64,7 +64,13 @@ public class BoardPanel extends JPanel {
             if (!gameLogic.getSettings().hideTileValuesOnBoard &&
                 (tile.getEffect() == TileEffect.WARP_FORWARD || tile.getEffect() == TileEffect.WARP_BACKWARD ||
                  tile.getEffect() == TileEffect.GIVE_POINTS || tile.getEffect() == TileEffect.TAKE_POINTS)) {
-                String line3 = tile.isStaticValue() ? String.valueOf(tile.getValue1()) : tile.getValue1() + "-" + tile.getValue2();
+                
+                String line3;
+                if (tile.isStaticValue()) {
+                    line3 = NumberFormatterUtil.formatNumberShort(tile.getValue1());
+                } else {
+                    line3 = NumberFormatterUtil.formatNumberShort(tile.getValue1()) + "-" + NumberFormatterUtil.formatNumberShort(tile.getValue2());
+                }
                 currentTileContentWidth = Math.max(currentTileContentWidth, fm.stringWidth(line3));
                 currentTileContentHeight += fm.getHeight();
             }
@@ -74,21 +80,21 @@ public class BoardPanel extends JPanel {
 
         actualTileWidth = Math.max(MIN_TILE_SIZE, maxContentWidth + 2 * TEXT_PADDING);
         actualTileHeight = Math.max(MIN_TILE_SIZE, maxContentHeight + 2 * TEXT_PADDING);
-
+        
         tilesPerRow = (int) Math.ceil(Math.sqrt(gameLogic.getBoard().size()));
-        if (tilesPerRow == 0 && gameLogic.getBoard().size() > 0) tilesPerRow = 1;
-        else if (tilesPerRow == 0) {
-             setPreferredSize(new Dimension(MIN_TILE_SIZE*10, MIN_TILE_SIZE*10));
+        if (tilesPerRow == 0 && gameLogic.getBoard().size() > 0) tilesPerRow = 1; 
+        else if (tilesPerRow == 0) { 
+             setPreferredSize(new Dimension(MIN_TILE_SIZE*10, MIN_TILE_SIZE*10)); 
              revalidate();
              return;
         }
 
         int numRows = (int) Math.ceil((double) gameLogic.getBoard().size() / tilesPerRow);
-
+        
         Dimension newPrefSize = new Dimension(actualTileWidth * tilesPerRow, actualTileHeight * numRows);
         if (!newPrefSize.equals(getPreferredSize())) {
             setPreferredSize(newPrefSize);
-            revalidate();
+            revalidate(); 
         }
         dimensionsRecalculated = true;
         lastHideSettingState = gameLogic.getSettings().hideTileValuesOnBoard;
@@ -103,11 +109,11 @@ public class BoardPanel extends JPanel {
              g.drawString("Game logic not initialized.", 20, 20);
              return;
         }
-
-        if (!dimensionsRecalculated || (gameLogic.getSettings().hideTileValuesOnBoard != lastHideSettingState)) {
+        
+        if (!dimensionsRecalculated || (gameLogic.getSettings().hideTileValuesOnBoard != lastHideSettingState)) { 
             recalculateBoardLayout(g);
         }
-
+        
         if (gameLogic.getBoard() == null || gameLogic.getBoard().isEmpty()) {
             g.drawString("Game not started or board not generated.", 20, 20);
             return;
@@ -123,20 +129,19 @@ public class BoardPanel extends JPanel {
 
             int row = i / tilesPerRow;
             int col = i % tilesPerRow;
-            if (row % 2 != 0) {
+            if (row % 2 != 0) { 
                 col = tilesPerRow - 1 - col;
             }
 
-            int x = col * actualTileWidth;
-            int y = row * actualTileHeight;
+            int x = col * actualTileWidth; 
+            int y = row * actualTileHeight; 
 
             g.setColor(getTileColor(tile.getEffect()));
             g.fillRect(x, y, actualTileWidth, actualTileHeight);
             g.setColor(Color.BLACK);
             g.drawRect(x, y, actualTileWidth, actualTileHeight);
 
-            Color originalTextColor = Color.BLACK;
-            // MODIFIED: Text color for HARSH_GO_TO_START and GO_TO_START
+            Color originalTextColor = Color.BLACK; 
             if (tile.getEffect() == TileEffect.HARSH_GO_TO_START || tile.getEffect() == TileEffect.GO_TO_START) {
                 g.setColor(Color.WHITE);
             } else {
@@ -144,7 +149,7 @@ public class BoardPanel extends JPanel {
             }
 
             int currentTextY = y + TEXT_PADDING + fm.getAscent();
-
+            
             g.drawString(String.valueOf(tileNum), x + TEXT_PADDING, currentTextY);
             currentTextY += fm.getHeight();
 
@@ -153,15 +158,21 @@ public class BoardPanel extends JPanel {
                 g.drawString(effectAbbr, x + TEXT_PADDING, currentTextY);
                 currentTextY += fm.getHeight();
             }
-
+            
             if (!gameLogic.getSettings().hideTileValuesOnBoard &&
                 (tile.getEffect() == TileEffect.WARP_FORWARD || tile.getEffect() == TileEffect.WARP_BACKWARD ||
                  tile.getEffect() == TileEffect.GIVE_POINTS || tile.getEffect() == TileEffect.TAKE_POINTS)) {
-                String valStr = tile.isStaticValue() ? String.valueOf(tile.getValue1()) : tile.getValue1() + "-" + tile.getValue2();
+                
+                String valStr;
+                if (tile.isStaticValue()) {
+                    valStr = NumberFormatterUtil.formatNumberShort(tile.getValue1()); // Use formatter
+                } else {
+                    valStr = NumberFormatterUtil.formatNumberShort(tile.getValue1()) + "-" + 
+                             NumberFormatterUtil.formatNumberShort(tile.getValue2()); // Use formatter
+                }
                 g.drawString(valStr, x + TEXT_PADDING, currentTextY);
             }
-
-            // MODIFIED: Reset color if it was changed for special tiles
+            
             if (tile.getEffect() == TileEffect.HARSH_GO_TO_START || tile.getEffect() == TileEffect.GO_TO_START) {
                  g.setColor(originalTextColor);
             }
@@ -191,15 +202,18 @@ public class BoardPanel extends JPanel {
                         playersOnThisTileCount++;
                     }
                 }
-
+                
                 int tileCenterX = pCol * actualTileWidth + actualTileWidth / 2;
                 int tileCenterY = pRow * actualTileHeight + actualTileHeight / 2;
 
                 int offsetX = 0;
-                int offsetY = 0;
+                int offsetY = 0; // Basic staggering, can be improved
                 if (playersOnThisTileCount > 1) {
-                    int totalWidthNeeded = playersOnThisTileCount * dynamicPlayerDotSize + (playersOnThisTileCount -1) * (dynamicPlayerDotSize/3);
-                    offsetX = (playerOrderOnTile * (dynamicPlayerDotSize + dynamicPlayerDotSize/3)) - (totalWidthNeeded / 2) + (dynamicPlayerDotSize/2) ;
+                    int totalWidthForDots = playersOnThisTileCount * dynamicPlayerDotSize;
+                    int spacing = dynamicPlayerDotSize / 3;
+                    if (playersOnThisTileCount > 1) totalWidthForDots += (playersOnThisTileCount -1) * spacing;
+
+                    offsetX = (playerOrderOnTile * (dynamicPlayerDotSize + spacing)) - (totalWidthForDots / 2) + (dynamicPlayerDotSize/2) ;
                 }
 
                 int playerX = tileCenterX - (dynamicPlayerDotSize / 2) + offsetX;
@@ -212,8 +226,8 @@ public class BoardPanel extends JPanel {
             }
         }
     }
-
-    public static String getEffectAbbreviation(TileEffect effect) { // Made static for legend access
+    
+    public static String getEffectAbbreviation(TileEffect effect) {
         switch (effect) {
             case WARP_FORWARD: return "W+";
             case WARP_BACKWARD: return "W-";
@@ -234,15 +248,14 @@ public class BoardPanel extends JPanel {
         switch (effect) {
             case START: return Color.LIGHT_GRAY;
             case FINISH: return new Color(255, 215, 0);
-            case WARP_FORWARD: return new Color(144, 238, 144);
-            case WARP_BACKWARD: return new Color(255, 182, 193);
-            case GIVE_POINTS: return new Color(173, 216, 230);
-            case TAKE_POINTS: return new Color(255, 228, 181);
+            case WARP_FORWARD: return new Color(144, 238, 144); 
+            case WARP_BACKWARD: return new Color(255, 182, 193); 
+            case GIVE_POINTS: return new Color(173, 216, 230); 
+            case TAKE_POINTS: return new Color(255, 228, 181); 
             case GIVE_LIFE: return Color.CYAN;
             case TAKE_LIFE: return Color.MAGENTA;
-            // MODIFIED: Background color for GO_TO_START (text will be white)
-            case GO_TO_START: return new Color(100, 100, 100); // Medium-Dark Gray
-            case HARSH_GO_TO_START: return new Color(60, 60, 60);
+            case GO_TO_START: return new Color(100, 100, 100); 
+            case HARSH_GO_TO_START: return new Color(60, 60, 60); 
             case RANDOM_EFFECT: return Color.ORANGE;
             case NORMAL: default: return Color.WHITE;
         }
