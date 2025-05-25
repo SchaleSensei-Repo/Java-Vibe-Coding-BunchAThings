@@ -18,7 +18,9 @@ public class GameFrame extends JFrame {
     public GameFrame() {
         setTitle("Deal or No Deal");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1000, 700);
+        // --- MODIFICATION HERE: Increased width to accommodate side-by-side settings ---
+        setSize(1300, 700); // Increased width from 1000 to 1300
+        // --- END MODIFICATION ---
         setLocationRelativeTo(null); // Center on screen
 
         settings = new GameSettings(); // Load settings on startup
@@ -30,7 +32,13 @@ public class GameFrame extends JFrame {
         settingsPanel = new SettingsPanel(settings, this);
         gamePanel = new GamePanel(gameLogic, settings, this);
 
-        mainPanel.add(settingsPanel, "Settings");
+        // Wrap the settingsPanel in a JScrollPane to handle vertical overflow automatically.
+        // This is still useful in case one of the columns becomes very tall or on smaller monitors.
+        JScrollPane settingsScrollPane = new JScrollPane(settingsPanel);
+        settingsScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        settingsScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER); // No horizontal scroll needed
+
+        mainPanel.add(settingsScrollPane, "Settings");
         mainPanel.add(gamePanel, "Game");
 
         add(mainPanel);

@@ -7,6 +7,7 @@ import com.deal.model.GameSettings;
 import javax.swing.*;
 import java.awt.*;
 import java.text.NumberFormat;
+import java.util.ArrayList; // Added for dynamic options
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -166,21 +167,17 @@ public class GamePanel extends JPanel {
             if (bag.isOpened()) {
                 button.setBackground(Color.LIGHT_GRAY);
                 button.setForeground(Color.DARK_GRAY);
-                // *** CHANGE HERE: Format value as currency ***
                 button.setText(currencyFormat.format(bag.getValue()));
                 button.setEnabled(false); // Opened bags are always disabled
             } else if (bag.isChosen()) {
                 button.setBackground(Color.YELLOW);
                 button.setForeground(Color.BLACK);
                 button.setText("Your Case");
-                // The chosen bag is only clickable during INITIAL_CHOICE (to select it).
-                // Once chosen, it's not clickable for opening, only implicitly opened at game end.
                 button.setEnabled(currentState == GameLogic.GameState.INITIAL_CHOICE);
             } else {
                 // Unopened, non-chosen bag
                 button.setBackground(new Color(173, 216, 230)); // Light blue
                 button.setForeground(Color.BLACK);
-                // Enable if in initial choice or opening bags state, and not during banker offer
                 button.setEnabled(currentState == GameLogic.GameState.INITIAL_CHOICE || currentState == GameLogic.GameState.OPENING_BAGS);
             }
         }
@@ -253,9 +250,8 @@ public class GamePanel extends JPanel {
 
     private void handleBagClick(int bagId) {
         if (gameLogic.getCurrentState() == GameLogic.GameState.INITIAL_CHOICE) {
-            // Player is choosing their main bag
             gameLogic.selectInitialBag(bagId);
-            updateGUI(); // Re-render to show chosen bag and enable other bags for opening
+            updateGUI();
             return;
         }
 
@@ -263,35 +259,46 @@ public class GamePanel extends JPanel {
             Bag clickedBag = gameLogic.getAllBags().stream().filter(b -> b.getId() == bagId).findFirst().orElse(null);
 
             if (clickedBag == null || clickedBag.isOpened() || clickedBag.isChosen()) {
-                return; // Cannot click an opened bag or the chosen bag for these actions.
+                return;
             }
 
-            String[] options = {"Open Bag", "Swap with My Chosen Bag", "Cancel"};
+            // --- MODIFICATION HERE: Dynamic options for bag click popup ---
+            ArrayList<String> optionList = new ArrayList<>();
+            optionList.add("Open Bag");
+            if (settings.isAllowBagSwap()) {
+                optionList.add("Swap with My Chosen Bag");
+            }
+            optionList.add("Cancel");
+            String[] options = optionList.toArray(new String[0]);
+            // --- END MODIFICATION ---
+
             int choice = JOptionPane.showOptionDialog(
                     this,
                     "What do you want to do with Bag #" + bagId + "?",
                     "Bag Action",
-                    JOptionPane.YES_NO_CANCEL_OPTION,
+                    JOptionPane.YES_NO_CANCEL_OPTION, // This constant is just a hint for layout
                     JOptionPane.QUESTION_MESSAGE,
                     null,
-                    options,
+                    options, // Use the dynamic options array
                     options[0]
             );
 
-            if (choice == 0) { // Open Bag
+            // Map choice back to action considering the dynamic options
+            String chosenOption = (choice >= 0 && choice < options.length) ? options[choice] : "Cancel";
+
+            if ("Open Bag".equals(chosenOption)) {
                 Bag openedBag = gameLogic.openBag(bagId);
                 if (openedBag != null) {
-                    // *** CHANGE HERE: Format value as currency ***
                     JOptionPane.showMessageDialog(this, "Bag #" + openedBag.getId() + " contained: " + currencyFormat.format(openedBag.getValue()), "Bag Opened!", JOptionPane.INFORMATION_MESSAGE);
                     if (gameLogic.shouldBankerOffer()) {
                         long currentOffer = gameLogic.calculateBankerOffer();
-                        gameLogic.addBankerOfferToHistory(currentOffer); // Add to history before showing dialog
+                        gameLogic.addBankerOfferToHistory(currentOffer);
                         showBankerOfferDialog(currentOffer);
                     } else if (gameLogic.isGameOver()) {
                         handleGameOver(false);
                     }
                 }
-            } else if (choice == 1) { // Swap with My Chosen Bag
+            } else if ("Swap with My Chosen Bag".equals(chosenOption)) { // Only possible if option was shown
                 if (gameLogic.getPlayerChosenBag() == null) {
                     JOptionPane.showMessageDialog(this, "Error: Your chosen bag is not set. This shouldn't happen.", "Error", JOptionPane.ERROR_MESSAGE);
                     return;
@@ -304,43 +311,41 @@ public class GamePanel extends JPanel {
                     JOptionPane.showMessageDialog(this, "Failed to swap bags.", "Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
-            // If choice is 2 (Cancel), do nothing.
+            // If "Cancel" or dialog closed, do nothing.
 
             updateGUI(); // Always update GUI after an action
         }
     }
 
     private void showBankerOfferDialog(long offer) {
-        setAllBagButtonsEnabled(false); // Disable all bag buttons while offer dialog is open
+        setAllBagButtonsEnabled(false);
 
-        // Custom panel for the dialog content
         JPanel offerPanel = new JPanel(new BorderLayout(10, 10));
         JLabel offerLabel = new JLabel("Banker's Offer: " + currencyFormat.format(offer), SwingConstants.CENTER);
         offerLabel.setFont(new Font("Arial", Font.BOLD, 28));
-        offerLabel.setForeground(new Color(0, 100, 0)); // Dark green color
+        offerLabel.setForeground(new Color(0, 100, 0));
 
         offerPanel.add(offerLabel, BorderLayout.CENTER);
         offerPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
-        // Options for the dialog
         String[] options = {"DEAL!", "NO DEAL!"};
         int choice = JOptionPane.showOptionDialog(
                 this,
-                offerPanel, // Pass the custom panel
+                offerPanel,
                 "BANKER'S OFFER!",
                 JOptionPane.YES_NO_OPTION,
                 JOptionPane.QUESTION_MESSAGE,
-                null, // No custom icon
+                null,
                 options,
-                options[0] // Default button
+                options[0]
         );
 
-        if (choice == JOptionPane.YES_OPTION) { // DEAL!
+        if (choice == JOptionPane.YES_OPTION) {
             handleDeal(offer);
-        } else { // NO DEAL! (includes closing the dialog)
+        } else {
             handleNoDeal();
         }
-        updateGUI(); // Update GUI after dialog closes
+        updateGUI();
     }
 
     private void handleDeal(long offeredAmount) {
@@ -356,7 +361,6 @@ public class GamePanel extends JPanel {
             JOptionPane.showMessageDialog(this, "NO DEAL! Continue playing.", "NO DEAL!", JOptionPane.INFORMATION_MESSAGE);
             gameLogic.resumeOpeningBags();
             updateGUI();
-            // Check for game over *after* resuming if this "no deal" was the penultimate choice
             if (gameLogic.isGameOver()) {
                 handleGameOver(false);
             }
@@ -364,25 +368,20 @@ public class GamePanel extends JPanel {
     }
 
     private void handleGameOver(boolean dealt) {
-        gameLogic.endGame(); // Set game state to Game_Over
+        gameLogic.endGame();
         Bag chosenBag = gameLogic.getPlayerChosenBag();
         String finalMessage;
         if (dealt) {
-            // The offer value was already presented and captured by handleDeal
             finalMessage = "Congratulations! You accepted the deal of " + currencyFormat.format(gameLogic.getBankerOfferHistory().get(gameLogic.getBankerOfferHistory().size() - 1)) + ".\n\nYour chosen bag (#" + chosenBag.getId() + ") contained: " + currencyFormat.format(chosenBag.getValue());
         } else {
-            // If no deal and all bags opened, player gets their chosen bag's value
-            // *** CHANGE HERE: Format value as currency ***
-            finalMessage = "Game Over! You did not make a deal.\n\nYour chosen bag (#" + chosenBag.getId() + ") contained: " + currencyFormat.format(chosenBag.getValue());
+            finalMessage = "Congratulations! You played 'NO DEAL' all the way to the end.\n\nYour final prize is the value contained in your chosen Bag (#" + chosenBag.getId() + "): " + currencyFormat.format(chosenBag.getValue()) + "!";
         }
 
-        // Force open the player's chosen bag for display at the end of the game
-        // This makes sure its value is visible when game is over
         if (chosenBag != null && !chosenBag.isOpened()) {
             chosenBag.open();
         }
 
         JOptionPane.showMessageDialog(this, finalMessage, "Game Over", JOptionPane.INFORMATION_MESSAGE);
-        updateGUI(); // Final update to show chosen bag value if it wasn't opened
+        updateGUI();
     }
 }
