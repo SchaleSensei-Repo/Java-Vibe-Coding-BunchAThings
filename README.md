@@ -83,7 +83,6 @@ See the [LICENSE](./LICENSE) file for more details.
 - Scoring system
 - Solo or hotseat multiplayer
 - Customizable settings
-- _(Planned: Thousand separator formatting)_
 
 </details>
 
