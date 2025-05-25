@@ -127,11 +127,11 @@ See the [LICENSE](./LICENSE) file for more details.
 <details>
   <summary><strong>7. Deal or No Deal <em>(Fun/Entertainment)</em></strong></summary>
 
-- Customizable bags quantity and prize ranges
-- Customizable banker offering frequency and prize range
-- Change bags mid-game
+- Customizable bags quantity, bias and prize ranges
+- Customizable banker offering frequency, bias and prize range
+- Option to change bags mid-game
 - Track or hide bag values
-- _(Planned: Customizable banker offering bias prize range and option to disable it)_
+- Authentic mode that mimic real life game show
 
 </details>
 
