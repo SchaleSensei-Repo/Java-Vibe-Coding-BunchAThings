@@ -53,78 +53,131 @@ See the [LICENSE](./LICENSE) file for more details.
 
 ---
 
-## Application Hub Features
+<details>
+  <summary><strong>Application Hub Features</strong></summary>
 
 - Groups all applications (.jar files and folders) in one place.
 - Allows you to browse and launch .jar files from a specified folder.
 - Remembers the last opened location for convenience.
 - Page navigation for easy browsing.
 
+</details>
+
 ---
 
 ## Available Applications
 
-### 1. 1000 Miles Card Game
+<details>
+  <summary><strong>1. 1000 Miles Card Game</strong></summary>
+
 - Solo or hotseat multiplayer
 - Customizable settings
 
-### 2. Bingo
+</details>
+
+<details>
+  <summary><strong>2. Bingo</strong></summary>
+
 - Scoring system
 - Solo or hotseat multiplayer
 - Customizable settings
 - _(Planned: Thousand separator formatting)_
 
-### 3. Hangman
+</details>
+
+<details>
+  <summary><strong>3. Hangman</strong></summary>
+
 - Unlimited attempts
 - Custom wordlists (.txt/.json)
 - Remembers last wordlist location
 
-### 4. Wordle
+</details>
+
+<details>
+  <summary><strong>4. Wordle</strong></summary>
+
 - Unlimited attempts
 - Custom wordlists (.txt/.json)
 - Remembers last wordlist location
 - Not limited to 5-letter words
 
-### 5. Minesweeper with a Twist
+</details>
+
+<details>
+  <summary><strong>5. Minesweeper with a Twist</strong></summary>
+
 - Scoring system (mines don’t end the game)
 - Customizable field and mine count
 - Negative scoring possible
 
-### 6. Battleship
+</details>
+
+<details>
+  <summary><strong>6. Battleship</strong></summary>
+
 - Customizable field size, ship quantity and length
 - Customizable fire amount per turn
 - Hotseat multiplayer with randomized ship positions
 
-### 7. Deal or No Deal _(Fun/Entertainment)_
+</details>
+
+<details>
+  <summary><strong>7. Deal or No Deal <em>(Fun/Entertainment)</em></strong></summary>
+
 - Customizable bags quantity and prize ranges
 - Customizable banker offering frequency and prize range
 - Change bags mid-game
 - Track or hide bag values
 - _(Planned: Customizable banker offering bias prize range and option to disable it)_
 
-### 8. Slot Machine _(Fun/Entertainment)_
+</details>
+
+<details>
+  <summary><strong>8. Slot Machine <em>(Fun/Entertainment)</em></strong></summary>
+
 - Customizable starting points, payment, multipliers, and payout lines
 - Winning logs
 
-### 9. Shop Budgeter
+</details>
+
+<details>
+  <summary><strong>9. Shop Budgeter</strong></summary>
+
 - Calculates what you can buy with a given budget
 - Supports custom items
 - Saves and auto-loads items/budgets
 
-### 10. Random List Picker
+</details>
+
+<details>
+  <summary><strong>10. Random List Picker</strong></summary>
+
 - Uses custom .txt lists (can load multiple)
 - Randomly selects and displays results from loaded lists
 
-### 11. Random Number Generator
+</details>
+
+<details>
+  <summary><strong>11. Random Number Generator</strong></summary>
+
 - Custom min/max range
 - Optional bias
 - Logs and totals
 
-### 12. Score Tracking
+</details>
+
+<details>
+  <summary><strong>12. Score Tracking</strong></summary>
+
 - Custom initial/additional/subtraction scores
 - Logs and totals
 
-### 13. Warp Game (Snake and Ladder variant)
+</details>
+
+<details>
+  <summary><strong>13. Warp Game (Snake and Ladder variant)</strong></summary>
+
 - Have score and lives system
 - Customizable initial score and initial life
 - Solo or Multiplayer hotseat with other human players or computers
@@ -135,10 +188,16 @@ See the [LICENSE](./LICENSE) file for more details.
 - Customizable the number of tiles for playing field
 - Option to have penalty if the points goes into negative value
 
-### 14. Java Converter
+</details>
+
+<details>
+  <summary><strong>14. Java Converter</strong></summary>
+
 - Convert the .java files to .txt files and vice versa
 - Can convert multiple files
 - Last location for input and output will be saved and auto-load at the program start
+
+</details>
 
 ---
 
