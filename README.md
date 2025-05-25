@@ -204,7 +204,32 @@ See the [LICENSE](./LICENSE) file for more details.
 
 ## Planned/Future Apps
 
-_None at the moment. Suggestions welcome!_
+<details>
+  <summary><strong>1. Bejeweled/match-3</strong></summary>
+
+- A planned applications
+
+</details>
+
+<details>
+  <summary><strong>2. Sudoku</strong></summary>
+
+- Complete with blank start solver for solving from another source
+- different grid size beside 3x3, like 2x2, 3x2 or custom sizes
+
+</details>
+
+<details>
+  <summary><strong>3. Memory match</strong></summary>
+
+- Memory match with numbers/colored symbol instead of image
+- customizable playing field sizes
+- scoring system with customizable min and max score (for randomize score) or static score (or negative score penalty if the tiles does not match)
+- Solo or multiplayer hotseat up to 8 players within single playing field
+
+</details>
+
+_Any suggestions welcome!_
 
 ---
 
