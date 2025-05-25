@@ -1,10 +1,13 @@
 package com.BingoGameApp;
+
+// GamePanel.java
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.*;
 import java.util.List;
+import java.text.NumberFormat;
 
 public class GamePanel extends JPanel {
     private BingoSettings settings;
@@ -21,11 +24,18 @@ public class GamePanel extends JPanel {
     private int player2BingoCount = 0;
     private Random random = new Random();
 
-    public GamePanel(BingoSettings settings) {
+    private NumberFormat scoreFormatter = NumberFormat.getIntegerInstance();
+
+    private Runnable returnToSettingsCallback;
+
+    private boolean isGameOver; // NEW: Flag to track game state
+
+    public GamePanel(BingoSettings settings, Runnable returnToSettingsCallback) {
         this.settings = settings;
+        this.returnToSettingsCallback = returnToSettingsCallback;
         setLayout(new BorderLayout());
 
-        resetGame();
+        resetGame(); // Reset game state including cards for fresh start
 
         // --- Top Panel: Generated Number ---
         JPanel topPanel = new JPanel(new FlowLayout());
@@ -71,11 +81,24 @@ public class GamePanel extends JPanel {
         }
         bottomPanel.add(scoreAndBingoPanel, BorderLayout.WEST);
 
+        JPanel controlButtonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+
         generateNumberButton = new JButton("Generate New Number(s)");
         generateNumberButton.setFont(new Font("Arial", Font.BOLD, 18));
         generateNumberButton.addActionListener(e -> generateNumbers());
-        bottomPanel.add(generateNumberButton, BorderLayout.EAST);
-        
+        controlButtonsPanel.add(generateNumberButton);
+
+        JButton returnButton = new JButton("Return to Settings");
+        returnButton.setFont(new Font("Arial", Font.PLAIN, 16));
+        returnButton.addActionListener(e -> {
+            if (returnToSettingsCallback != null) {
+                returnToSettingsCallback.run();
+            }
+        });
+        controlButtonsPanel.add(returnButton);
+
+        bottomPanel.add(controlButtonsPanel, BorderLayout.EAST);
+
         add(bottomPanel, BorderLayout.SOUTH);
         updateScoresAndBingos();
     }
@@ -112,12 +135,18 @@ public class GamePanel extends JPanel {
         if (player2Card != null) player2Card.reset();
         if (generatedNumberLabel != null) generatedNumberLabel.setText("Generated: -");
         if (generateNumberButton != null) generateNumberButton.setEnabled(true);
+        isGameOver = false; // NEW: Reset game over flag
     }
 
     private void generateNumbers() {
+        if (isGameOver) { // NEW: Prevent actions if game is over
+            return;
+        }
+
         if (availableNumbersForCall.isEmpty()) {
             JOptionPane.showMessageDialog(this, "All numbers have been called! Game over.", "Game Over", JOptionPane.INFORMATION_MESSAGE);
             generateNumberButton.setEnabled(false);
+            isGameOver = true; // Set game over
             return;
         }
 
@@ -149,7 +178,9 @@ public class GamePanel extends JPanel {
         if (settings.isAutoSelectNumbers()) {
             autoSelectAndScore(newlyGeneratedNumbers);
         }
-        updateScoresAndBingos();
+        updateScoresAndBingos(); // Update scores after generate button points
+
+        checkOverallWinCondition(); // NEW: Centralized win check after all processing for the turn
     }
 
     private void autoSelectAndScore(List<Integer> generatedNums) {
@@ -157,19 +188,23 @@ public class GamePanel extends JPanel {
             boolean player1Marked = player1Card.markNumber(num);
             if (player1Marked) {
                 addPoints(1, calculateAwardedPoints(settings.isRandomizePoints(), settings.getMinRandomPoints(), settings.getMaxRandomPoints(), settings.getExactPoints()));
-                checkForBingoWinCondition(1, player1Card);
+                updateBingoState(1, player1Card); // NEW: Use new method
             }
             if (settings.getPlayerCount() == 2) {
                 boolean player2Marked = player2Card.markNumber(num);
                 if (player2Marked) {
                     addPoints(2, calculateAwardedPoints(settings.isRandomizePoints(), settings.getMinRandomPoints(), settings.getMaxRandomPoints(), settings.getExactPoints()));
-                    checkForBingoWinCondition(2, player2Card);
+                    updateBingoState(2, player2Card); // NEW: Use new method
                 }
             }
         }
     }
 
     private void handleManualSelection(int playerIndex, BingoCard card, int r, int c) {
+        if (isGameOver) { // NEW: Prevent actions if game is over
+            return;
+        }
+
         int clickedNumber = card.getNumberAt(r, c);
 
         if (card.isMarked(r, c)) {
@@ -180,8 +215,9 @@ public class GamePanel extends JPanel {
         if (calledNumbers.contains(clickedNumber)) {
             card.markNumber(clickedNumber);
             addPoints(playerIndex + 1, calculateAwardedPoints(settings.isRandomizePoints(), settings.getMinRandomPoints(), settings.getMaxRandomPoints(), settings.getExactPoints()));
-            checkForBingoWinCondition(playerIndex + 1, card);
+            updateBingoState(playerIndex + 1, card); // NEW: Use new method
             updateScoresAndBingos();
+            checkOverallWinCondition(); // NEW: Centralized win check after manual mark
         } else {
             JOptionPane.showMessageDialog(this, clickedNumber + " was not a generated number!", "Invalid Selection", JOptionPane.WARNING_MESSAGE);
         }
@@ -209,15 +245,17 @@ public class GamePanel extends JPanel {
     }
 
     private void updateScoresAndBingos() {
-        player1ScoreLabel.setText("Player 1 Score: " + player1Score);
+        player1ScoreLabel.setText("Player 1 Score: " + scoreFormatter.format(player1Score));
         player1BingoLabel.setText("Bingos: " + player1BingoCount);
         if (settings.getPlayerCount() == 2) {
-            player2ScoreLabel.setText("Player 2 Score: " + player2Score);
+            player2ScoreLabel.setText("Player 2 Score: " + scoreFormatter.format(player2Score));
             player2BingoLabel.setText("Bingos: " + player2BingoCount);
         }
     }
 
-    private void checkForBingoWinCondition(int playerNumber, BingoCard card) {
+    // RENAMED AND MODIFIED: Now only updates the card's bingo state and highlights.
+    // It no longer displays game over messages or resets the game.
+    private void updateBingoState(int playerNumber, BingoCard card) {
         List<List<Point>> newBingoLines = card.checkAndGetNewBingoLines();
 
         if (!newBingoLines.isEmpty()) {
@@ -238,43 +276,50 @@ public class GamePanel extends JPanel {
             } else if (playerNumber == 2) {
                 player2BingoCount = card.getBingoCount();
             }
-            updateScoresAndBingos();
+            // Scores and bingos will be updated by updateScoresAndBingos() after this method returns.
+        }
+    }
 
-            int currentPlayerBingoCount = (playerNumber == 1) ? player1BingoCount : player2BingoCount;
+    // NEW METHOD: Centralized check for winning condition
+    private void checkOverallWinCondition() {
+        if (isGameOver) { // Game is already over, do nothing
+            return;
+        }
 
-            if (currentPlayerBingoCount >= settings.getBingosNeededToWin()) {
-                String winnerMessage;
-                boolean gameOver = true; // Flag to indicate game over
+        boolean p1MetWinCondition = player1BingoCount >= settings.getBingosNeededToWin();
+        boolean p2MetWinCondition = (settings.getPlayerCount() == 2) && (player2BingoCount >= settings.getBingosNeededToWin());
 
-                if (settings.getPlayerCount() == 1) {
-                    winnerMessage = "BINGO! You win with " + currentPlayerBingoCount + " bingos!";
+        String winnerMessage = null;
+
+        if (settings.getPlayerCount() == 1 && p1MetWinCondition) {
+            winnerMessage = "BINGO! You win with " + player1BingoCount + " bingos!";
+        } else if (settings.getPlayerCount() == 2) {
+            if (p1MetWinCondition && p2MetWinCondition) {
+                // Both players won simultaneously or both met condition before this turn
+                if (player1Score > player2Score) {
+                    winnerMessage = "It's a TIE BREAKER! Player 1 wins with " + scoreFormatter.format(player1Score) + " points!";
+                } else if (player2Score > player1Score) {
+                    winnerMessage = "It's a TIE BREAKER! Player 2 wins with " + scoreFormatter.format(player2Score) + " points!";
                 } else {
-                    int otherPlayerNumber = (playerNumber == 1) ? 2 : 1;
-                    int otherPlayerBingoCount = (playerNumber == 1) ? player2BingoCount : player1BingoCount;
-
-                    // If both players meet or exceed the bingo requirement in the same turn
-                    if (otherPlayerBingoCount >= settings.getBingosNeededToWin()) {
-                        // Tie breaker: most points
-                        if (player1Score > player2Score) {
-                            winnerMessage = "It's a TIE BREAKER! Player 1 wins with " + player1Score + " points!";
-                        } else if (player2Score > player1Score) {
-                            winnerMessage = "It's a TIE BREAKER! Player 2 wins with " + player2Score + " points!";
-                        } else {
-                            winnerMessage = "It's a perfect TIE! Both players have " + player1Score + " points and " + settings.getBingosNeededToWin() + " bingos!";
-                        }
-                    } else {
-                        winnerMessage = "BINGO! Player " + playerNumber + " wins with " + currentPlayerBingoCount + " bingos!";
-                    }
+                    winnerMessage = "It's a perfect TIE! Both players have " + scoreFormatter.format(player1Score) + " points and " + settings.getBingosNeededToWin() + " bingos!";
                 }
+            } else if (p1MetWinCondition) {
+                winnerMessage = "BINGO! Player 1 wins with " + player1BingoCount + " bingos!";
+            } else if (p2MetWinCondition) {
+                winnerMessage = "BINGO! Player 2 wins with " + player2BingoCount + " bingos!";
+            }
+        }
 
-                JOptionPane.showMessageDialog(this, winnerMessage, "Game Over!", JOptionPane.INFORMATION_MESSAGE);
-                generateNumberButton.setEnabled(false);
-                
-                int response = JOptionPane.showConfirmDialog(this, "Play again?", "Game Over", JOptionPane.YES_NO_OPTION);
-                if (response == JOptionPane.YES_OPTION) {
-                    resetGame();
-                    updateScoresAndBingos();
-                }
+        if (winnerMessage != null) {
+            isGameOver = true;
+            generateNumberButton.setEnabled(false); // Disable button once game is over
+            
+            JOptionPane.showMessageDialog(this, winnerMessage, "Game Over!", JOptionPane.INFORMATION_MESSAGE);
+            
+            int response = JOptionPane.showConfirmDialog(this, "Play again?", "Game Over", JOptionPane.YES_NO_OPTION);
+            if (response == JOptionPane.YES_OPTION) {
+                resetGame();
+                updateScoresAndBingos(); // Re-initialize scores and bingos on display
             }
         }
     }

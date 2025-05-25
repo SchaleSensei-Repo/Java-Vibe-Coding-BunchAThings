@@ -1,4 +1,6 @@
 package com.BingoGameApp;
+
+// BingoGameApp.java
 import javax.swing.*;
 import java.awt.*;
 
@@ -32,7 +34,8 @@ public class BingoGameApp extends JFrame {
         if (currentPanel != null) {
             remove(currentPanel);
         }
-        currentPanel = new GamePanel(settings);
+        // MODIFIED: Pass a Runnable that will call showSettingsPanel when invoked
+        currentPanel = new GamePanel(settings, this::showSettingsPanel);
         add(currentPanel);
         revalidate();
         repaint();
