@@ -62,6 +62,7 @@ See the [LICENSE](./LICENSE) file for more details.
 - Allows you to browse and launch .jar files from a specified folder.
 - Remembers the last opened location for convenience.
 - Page navigation for easy browsing.
+- Debugging functionality for debug and troubleshoot outside IDE environment
 
 </details>
 
