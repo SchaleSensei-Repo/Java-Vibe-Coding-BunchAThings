@@ -1,5 +1,6 @@
 # settings file
 *.ini
 *.properties
+*.log
 apache-maven-3.9.9/
 words_dictionary.json
