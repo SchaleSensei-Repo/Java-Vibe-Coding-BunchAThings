@@ -17,7 +17,7 @@
 
 - [About This Repo](#about-this-repo)
 - [License & Usage](#license--usage)
-- [Application Hub Features](#application-hub-features)
+- [Application Hub](#application-hub)
 - [Available Applications](#available-applications)
 - [Planned/Future Apps](#plannedfuture-apps)
 - [How to Contribute](#how-to-contribute)
@@ -52,6 +52,8 @@ You do not need to ask permission. Just go build cool stuff!
 See the [LICENSE](./LICENSE) file for more details.
 
 ---
+
+## Application Hub
 
 <details>
   <summary><strong>Application Hub Features</strong></summary>
