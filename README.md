@@ -135,6 +135,11 @@ See the [LICENSE](./LICENSE) file for more details.
 - Customizable the number of tiles for playing field
 - Option to have penalty if the points goes into negative value
 
+### 14. Java Converter
+- Convert the .java files to .txt files and vice versa
+- Can convert multiple files
+- Last location for input and output will be saved and auto-load at the program start
+
 ---
 
 ## Planned/Future Apps
