@@ -201,6 +201,17 @@ See the [LICENSE](./LICENSE) file for more details.
 
 </details>
 
+<details>
+  <summary><strong>15. JSON Beautify and Compare</strong></summary>
+
+- Beautify the JSON for easy reading with files or copy paste
+- Compare the 2 JSON either with files or copy paste
+- Remember the last load file location
+- Can do beautify and compare in single operation
+- Syntax highlighting for different values (yellow), missing keys (red and shown to different panel), and different types (blue)
+
+</details>
+
 ---
 
 ## Planned/Future Apps
@@ -227,16 +238,6 @@ See the [LICENSE](./LICENSE) file for more details.
 - customizable playing field sizes
 - scoring system with customizable min and max score (for randomize score) or static score (or negative score penalty if the tiles does not match)
 - Solo or multiplayer hotseat up to 8 players within single playing field
-
-</details>
-
-<details>
-  <summary><strong>4. JSON Beautify and Compare</strong></summary>
-
-- Beautify the JSON for easy reading with files or copy paste
-- Compare the 2 JSON either with files or copy paste
-- Remember the last load file location
-- Can do beautify and compare in single operation
 
 </details>
 
