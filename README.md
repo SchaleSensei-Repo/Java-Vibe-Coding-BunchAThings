@@ -71,7 +71,7 @@ See the [LICENSE](./LICENSE) file for more details.
 ## Available Applications
 
 <details>
-  <summary><strong>1. 1000 Miles Card Game</strong></summary>
+  <summary><strong>1. 1000 Miles Card Game <em>(Fun/Games)</em></strong></summary>
 
 - Solo or hotseat multiplayer
 - Customizable settings
@@ -79,7 +79,7 @@ See the [LICENSE](./LICENSE) file for more details.
 </details>
 
 <details>
-  <summary><strong>2. Bingo</strong></summary>
+  <summary><strong>2. Bingo <em>(Fun/Games)</em></strong></summary>
 
 - Scoring system
 - Solo or hotseat multiplayer
@@ -88,7 +88,7 @@ See the [LICENSE](./LICENSE) file for more details.
 </details>
 
 <details>
-  <summary><strong>3. Hangman</strong></summary>
+  <summary><strong>3. Hangman <em>(Fun/Games)</em></strong></summary>
 
 - Unlimited attempts
 - Custom wordlists (.txt/.json)
@@ -97,7 +97,7 @@ See the [LICENSE](./LICENSE) file for more details.
 </details>
 
 <details>
-  <summary><strong>4. Wordle</strong></summary>
+  <summary><strong>4. Wordle <em>(Fun/Games)</em></strong></summary>
 
 - Unlimited attempts
 - Custom wordlists (.txt/.json)
@@ -107,7 +107,7 @@ See the [LICENSE](./LICENSE) file for more details.
 </details>
 
 <details>
-  <summary><strong>5. Minesweeper with a Twist</strong></summary>
+  <summary><strong>5. Minesweeper with a Twist <em>(Fun/Games)</em></strong></summary>
 
 - Scoring system (mines don’t end the game)
 - Customizable field and mine count
@@ -116,7 +116,7 @@ See the [LICENSE](./LICENSE) file for more details.
 </details>
 
 <details>
-  <summary><strong>6. Battleship</strong></summary>
+  <summary><strong>6. Battleship <em>(Fun/Games)</em></strong></summary>
 
 - Customizable field size, ship quantity and length
 - Customizable fire amount per turn
@@ -125,7 +125,7 @@ See the [LICENSE](./LICENSE) file for more details.
 </details>
 
 <details>
-  <summary><strong>7. Deal or No Deal <em>(Fun/Entertainment)</em></strong></summary>
+  <summary><strong>7. Deal or No Deal <em>(Fun/Games)</em></strong></summary>
 
 - Customizable bags quantity, bias and prize ranges
 - Customizable banker offering frequency, bias and prize range
@@ -136,7 +136,7 @@ See the [LICENSE](./LICENSE) file for more details.
 </details>
 
 <details>
-  <summary><strong>8. Slot Machine <em>(Fun/Entertainment)</em></strong></summary>
+  <summary><strong>8. Slot Machine <em>(Fun/Games)</em></em></strong></summary>
 
 - Customizable starting points, payment, multipliers, and payout lines
 - Winning logs
@@ -178,7 +178,7 @@ See the [LICENSE](./LICENSE) file for more details.
 </details>
 
 <details>
-  <summary><strong>13. Warp Game (Snake and Ladder variant)</strong></summary>
+  <summary><strong>13. Warp Game (Snake and Ladder variant) <em>(Fun/Games)</em></strong></summary>
 
 - Have score and lives system
 - Customizable initial score and initial life
@@ -212,19 +212,37 @@ See the [LICENSE](./LICENSE) file for more details.
 
 </details>
 
+<details>
+  <summary><strong>16. Investment Contribute Calculator</strong></summary>
+
+- Calculate the investment that based on contribute made each month/year
+- The contribution can be in negative number in case of monthly/yearly expenses scenario
+- The calculation based on basic and simple calculation and not reflect on real world complex calculation
+
+</details>
+
+<details>
+  <summary><strong>17. Investment Type Calculator</strong></summary>
+
+- Calculate the investment that based on type of investment (example : stocks, bonds, combined portofolio, etc)
+- Have single income goals (per year) and investment type calculation and multiple calculation that can input multiple income goals and investment types
+- The calculation based on basic and simple calculation and not reflect on real world complex calculation
+
+</details>
+
 ---
 
 ## Planned/Future Apps
 
 <details>
-  <summary><strong>1. Bejeweled/match-3</strong></summary>
+  <summary><strong>1. Bejeweled/match-3 <em>(Fun/Games)</em></strong></summary>
 
 - A planned applications
 
 </details>
 
 <details>
-  <summary><strong>2. Sudoku</strong></summary>
+  <summary><strong>2. Sudoku <em>(Fun/Games)</em></strong></summary>
 
 - Complete with blank start solver for solving from another source
 - different grid size beside 3x3, like 2x2, 3x2 or custom sizes
@@ -232,7 +250,7 @@ See the [LICENSE](./LICENSE) file for more details.
 </details>
 
 <details>
-  <summary><strong>3. Memory match</strong></summary>
+  <summary><strong>3. Memory match <em>(Fun/Games)</em></strong></summary>
 
 - Memory match with numbers/colored symbol instead of image
 - customizable playing field sizes
