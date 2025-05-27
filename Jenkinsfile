@@ -9,7 +9,7 @@ pipeline {
         OUTPUT_DIR = 'out'
         RELEASE_PACKAGE_DIR = 'release_package'
         GITHUB_REPO = 'SchaleSensei-Repo/Java-Vibe-Coding-BunchAThings'
-        GITHUB_CREDS = 'GITHUB_PAT' // Create this in Jenkins credentials
+        GITHUB_CREDS = 'GITHUB_PAT'
         RELEASES_TO_KEEP = 3
         EMAIL_RECIPIENTS = 'ashlovedawn@gmail.com'
     }
@@ -28,7 +28,7 @@ pipeline {
                     bat "if exist ${OUTPUT_DIR} rmdir /s /q ${OUTPUT_DIR}"
                     bat "mkdir ${OUTPUT_DIR}"
 
-                    // Use PowerShell to find Java files that contain a main method
+                    // PowerShell: Find .java files that contain 'public static void main'
                     bat 'powershell -Command "Get-ChildItem -Recurse -Filter *.java | Where-Object { Select-String -Path $_.FullName -Pattern \\"public static void main\\" } | ForEach-Object { $_.FullName } > main_java_files.txt"'
 
                     def javaFiles = readFile('main_java_files.txt').split("\\r?\\n").findAll { it.trim() }
@@ -37,22 +37,21 @@ pipeline {
                         error "No Java files with main method found!"
                     }
 
-                    def rootJarApps = ['AppMainRoot'] // Class names to go in root directory
+                    def rootJarApps = ['AppMainRoot'] // Optional: place some jars in root
 
-                    def builds = javaFiles.collect { filePath ->
-                        return {
-                            def fileName = filePath.tokenize('\\\\')[-1]
-                            def className = fileName.replace('.java', '')
+                    def builds = javaFiles.collectEntries { filePath ->
+                        def fileName = filePath.tokenize('\\\\')[-1]
+                        def className = fileName.replace('.java', '')
 
+                        [(className): {
                             def jarPath = rootJarApps.contains(className)
                                 ? "${className}.jar"
                                 : "${OUTPUT_DIR}\\${className}.jar"
 
                             echo "🛠️ Compiling ${filePath} to ${jarPath}"
-
                             bat "javac \"${filePath}\""
                             bat "jar cfe \"${jarPath}\" ${className} ${className}.class"
-                        }
+                        }]
                     }
 
                     parallel builds
@@ -87,7 +86,6 @@ pipeline {
                                  https://api.github.com/repos/${GITHUB_REPO}/releases ^
                                  -d "{\\"tag_name\\": \\"${tag}\\", \\"name\\": \\"${tag}\\", \\"body\\": \\"${message}\\", \\"draft\\": false, \\"prerelease\\": false}"
                         """
-                        // Note: You can also upload assets using GitHub API v3 if desired
                     }
                 }
             }
