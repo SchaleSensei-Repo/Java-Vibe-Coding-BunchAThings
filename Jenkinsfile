@@ -10,7 +10,7 @@ pipeline {
         RELEASE_PACKAGE_DIR = 'release_package'
         GITHUB_REPO = 'SchaleSensei-Repo/Java-Vibe-Coding-BunchAThings' // Format: "owner/repo"
         GITHUB_CREDS = 'GITHUB_PAT'         // Credential ID for GitHub PAT
-        RELEASES_TO_KEEP = 3                // Defined but not used in original script for cleanup
+        RELEASES_TO_KEEP = 3
         EMAIL_RECIPIENTS = 'ashlovedawn@gmail.com'
         LIBS_DIR_PATH = 'libs' // Assuming your libs folder is at the root of the repo
     }
@@ -29,25 +29,29 @@ pipeline {
                     bat "if exist \"${OUTPUT_DIR}\" rmdir /s /q \"${OUTPUT_DIR}\""
                     bat "mkdir \"${OUTPUT_DIR}\""
 
-                    // PowerShell: Find .java files with main() and save to main_java_files.txt (UTF-8 without BOM)
-                    // CORRECTED POWERSHELL INVOCATION:
-                    bat ('''
-                        powershell -NoProfile -NonInteractive -Command " `
-                            $ErrorActionPreference = 'Stop'; `
-                            $javaFilePaths = Get-ChildItem -Recurse -Filter *.java | `
-                                Where-Object { Select-String -Path $_.FullName -Pattern 'public static void main' -Quiet } | `
-                                ForEach-Object { $_.FullName }; `
-                            if ($null -ne $javaFilePaths -and $javaFilePaths.Count -gt 0) { `
-                                [System.IO.File]::WriteAllLines('main_java_files.txt', $javaFilePaths, [System.Text.UTF8Encoding]::new($false)) `
-                            } else { `
-                                Write-Host 'No Java files with a main method were found.'; `
-                                Set-Content -Path 'main_java_files.txt' -Value '' `
-                            }"
-                    '''.stripIndent())
+                    // CORRECTED: PowerShell script execution using -EncodedCommand
+                    def psScriptContent = '''
+                        $ErrorActionPreference = 'Stop';
+                        $javaFilePaths = Get-ChildItem -Recurse -Filter *.java |
+                            Where-Object { Select-String -Path $_.FullName -Pattern 'public static void main' -Quiet } |
+                            ForEach-Object { $_.FullName };
+                        if ($null -ne $javaFilePaths -and $javaFilePaths.Count -gt 0) {
+                            [System.IO.File]::WriteAllLines('main_java_files.txt', $javaFilePaths, [System.Text.UTF8Encoding]::new($false))
+                        } else {
+                            Write-Host 'No Java files with a main method were found.';
+                            Set-Content -Path 'main_java_files.txt' -Value ''
+                        }
+                    '''.stripIndent() // Use triple-single-quotes to avoid Groovy interpolation issues with $
+
+                    // Encode the PowerShell script to Base64 (UTF-16LE encoding)
+                    byte[] scriptBytes = psScriptContent.getBytes("UTF-16LE")
+                    def encodedCommand = scriptBytes.encodeBase64().toString()
+
+                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
                     
                     def javaFileContent = readFile(file: 'main_java_files.txt', encoding: 'UTF-8').trim()
                     if (javaFileContent.isEmpty()) {
-                        error "No Java files with a main method were found (main_java_files.txt is empty)."
+                        error "No Java files with a main method were found (main_java_files.txt is empty or PowerShell script failed silently)."
                     }
 
                     def javaFiles = javaFileContent.split("\\r?\\n")
@@ -58,40 +62,37 @@ pipeline {
                         error "No Java files with a main method were found after processing main_java_files.txt."
                     }
 
-                    def rootJarApps = ['AppMainRoot'] // Short class names of apps to be placed in workspace root
+                    def rootJarApps = ['AppMainRoot'] 
 
                     def dependencyJars = []
-                    if (env.LIBS_DIR_PATH) {
-                       def libsDir = new File(env.LIBS_DIR_PATH)
+                    def actualLibsDirPath = env.LIBS_DIR_PATH // Get the value once
+                    if (actualLibsDirPath) {
+                       def libsDir = new File(actualLibsDirPath)
                        if (libsDir.isDirectory()) {
-                           // Scan only top-level of libsDir for JARs. Use eachFileRecurse for subdirectories.
                            libsDir.eachFile { f -> 
                                if (f.name.endsWith(".jar")) {
                                    dependencyJars.add(f.absolutePath.replace('/', '\\'))
                                }
                            }
                        } else {
-                           echo "Warning: LIBS_DIR_PATH '${env.LIBS_DIR_PATH}' is not a directory."
+                           echo "Warning: LIBS_DIR_PATH '${actualLibsDirPath}' is not a directory."
                        }
                     }
                     
                     if (!dependencyJars.isEmpty()) {
                         echo "Found dependency JARs: ${dependencyJars.join(', ')}"
                     } else {
-                        echo "No external dependency JARs configured or found in '${env.LIBS_DIR_PATH}'. Compilation might fail for projects needing them."
+                        echo "No external dependency JARs configured or found in '${actualLibsDirPath}'. Compilation might fail for projects needing them."
                     }
                     def commonClassPath = dependencyJars.join(File.pathSeparator)
 
                     def builds = javaFiles.collectEntries { fullFilePath ->
                         String groovyFilePath = fullFilePath.replace('\\', '/') 
-
                         def fileName = groovyFilePath.tokenize('/')[-1]
                         def classNameOnly = fileName.replace('.java', '') 
-
                         String packageSubPath = ""
                         String srcDirForSourcepath = "" 
                         String fqcn = classNameOnly 
-
                         int srcMainJavaIdx = groovyFilePath.lastIndexOf("src/main/java/")
                         int srcIdx = groovyFilePath.lastIndexOf("src/")
                         int packageStartIndexInFilePath = -1
@@ -106,7 +107,7 @@ pipeline {
                             String currentPath = groovyFilePath.contains('/') ? groovyFilePath.substring(0, groovyFilePath.lastIndexOf('/')) : '.'
                             List<String> pathParts = currentPath.tokenize('/')
                             int lastPotentialPackagePartIndex = pathParts.size() -1
-                            while(lastPotentialPackagePartIndex >= 0) {
+                            while(lastPotentialPackagePartIndex >= 0 && !pathParts[lastPotentialPackagePartIndex].isEmpty()) {
                                 if (pathParts[lastPotentialPackagePartIndex] ==~ /^[a-z_][a-z0-9_]*$/) {
                                      lastPotentialPackagePartIndex--
                                 } else {
