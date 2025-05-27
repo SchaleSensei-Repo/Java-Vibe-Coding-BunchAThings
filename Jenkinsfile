@@ -2,132 +2,141 @@ pipeline {
     agent any
 
     triggers {
-        pollSCM('H/10 * * * *') // Check for code changes every 10 mins
+        pollSCM('H/10 * * * *') // Poll Git every 10 mins
     }
 
     environment {
-        BUILD_DIR = 'out'
-        ZIP_NAME = 'java_release_build.zip'
-        RELEASE_TAG = "release-${env.BUILD_NUMBER}"
-        RELEASE_NAME = "Build #${env.BUILD_NUMBER}"
+        OUTPUT_DIR = 'out'
+        RELEASE_PACKAGE_DIR = 'release_package'
         GITHUB_REPO = 'SchaleSensei-Repo/Java-Vibe-Coding-BunchAThings'
-        GITHUB_CREDS = 'GITHUB_PAT' // Set this in Jenkins credentials
+        GITHUB_CREDS = 'GITHUB_PAT' // Create this in Jenkins credentials
+        RELEASES_TO_KEEP = 3
         EMAIL_RECIPIENTS = 'ashlovedawn@gmail.com'
     }
 
     stages {
-        stage('Clean') {
-            steps {
-                script {
-                    def start = System.currentTimeMillis()
-                    deleteDir()
-                    echo "Cleaned workspace"
-                    def end = System.currentTimeMillis()
-                    echo "🧹 Clean took ${(end - start) / 1000}s"
-                }
-            }
-        }
-
         stage('Checkout') {
             steps {
-                script {
-                    def start = System.currentTimeMillis()
-                    checkout scm
-                    def end = System.currentTimeMillis()
-                    echo "📥 Checkout took ${(end - start) / 1000}s"
-                }
+                checkout scm
             }
         }
 
-        stage('Build') {
+        stage('Build Apps') {
             steps {
                 script {
                     def start = System.currentTimeMillis()
+                    bat "if exist ${OUTPUT_DIR} rmdir /s /q ${OUTPUT_DIR}"
+                    bat "mkdir ${OUTPUT_DIR}"
 
-                    // Create build directory
-                    sh "mkdir -p ${env.BUILD_DIR}"
+                    def javaFiles = findFiles(glob: '**/Main*.java')
 
-                    // Loop through subfolders and compile each Main*.java
-                    def apps = findFiles(glob: '**/Main*.java')
-                    for (file in apps) {
-                        def appName = file.name.replace('.java', '')
-                        def appDir = file.path.replaceAll('/[^/]+$', '')
-                        def outputJar = appName == 'MainMainApp' ? "${appName}.jar" : "${env.BUILD_DIR}/${appName}.jar"
-
-                        echo "📦 Building ${appName}..."
-                        sh """
-                            javac ${file.path}
-                            jar cfe ${outputJar} ${appName} ${file.path.replace('.java', '.class')}
-                        """
+                    if (javaFiles.length == 0) {
+                        error "No Main*.java files found!"
                     }
 
+                    def rootJarApps = ['AppMainRoot'] // Put class names here that go to root
+
+                    def builds = javaFiles.collect { file ->
+                        return {
+                            def className = file.name.replace('.java', '')
+                            def jarPath = rootJarApps.contains(className)
+                                ? "${className}.jar"
+                                : "${OUTPUT_DIR}\\${className}.jar"
+
+                            echo "🛠️ Compiling ${file.path}"
+                            bat """
+                            javac ${file.path}
+                            if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+                            jar cfe ${jarPath} ${className} ${file.path.replace('.java', '.class')}
+                            """
+                        }
+                    }
+
+                    parallel builds
                     def end = System.currentTimeMillis()
-                    echo "⚙️ Build step took ${(end - start) / 1000}s"
+                    echo "⏱ Build duration: ${(end - start) / 1000}s"
                 }
             }
         }
 
-        stage('Zip Output') {
+        stage('Prepare Release Zip') {
             steps {
                 script {
-                    def start = System.currentTimeMillis()
+                    def timestamp = new Date().format("yyyyMMdd-HHmmss")
+                    env.ZIP_FILE = "java_release_build-${timestamp}.zip"
 
-                    sh """
-                        mkdir -p zip_out/out
-                        mv ${env.BUILD_DIR}/*.jar zip_out/out/
-                        mv *.jar zip_out/ || true
-                        cd zip_out && zip -r ../${env.ZIP_NAME} .
+                    bat """
+                    if exist ${RELEASE_PACKAGE_DIR} rmdir /s /q ${RELEASE_PACKAGE_DIR}
+                    mkdir ${RELEASE_PACKAGE_DIR}
+                    copy /Y *.jar ${RELEASE_PACKAGE_DIR}\\ >NUL 2>&1
+                    xcopy /E /I ${OUTPUT_DIR} ${RELEASE_PACKAGE_DIR}\\out >NUL
+                    powershell -Command "Compress-Archive -Path ${RELEASE_PACKAGE_DIR}\\* -DestinationPath ${env.ZIP_FILE}"
                     """
-
-                    def end = System.currentTimeMillis()
-                    echo "🗜️ Zipping took ${(end - start) / 1000}s"
                 }
             }
         }
 
         stage('Publish GitHub Release') {
             steps {
-                script {
-                    def start = System.currentTimeMillis()
+                withCredentials([string(credentialsId: env.GITHUB_CREDS, variable: 'TOKEN')]) {
+                    script {
+                        def tag = "release-${new Date().format('yyyyMMdd-HHmmss')}"
+                        def apiUrl = "https://api.github.com/repos/${env.GITHUB_REPO}/releases"
 
-                    withCredentials([string(credentialsId: env.GITHUB_CREDS, variable: 'TOKEN')]) {
-                        sh """
-                            curl -s -X POST -H "Authorization: token \$TOKEN" \
-                                -d '{ "tag_name": "${env.RELEASE_TAG}", "name": "${env.RELEASE_NAME}", "body": "Automated release", "draft": false, "prerelease": false }' \
-                                https://api.github.com/repos/${env.GITHUB_REPO}/releases > response.json
+                        def createPayload = """
+                        {
+                            "tag_name": "${tag}",
+                            "name": "${tag}",
+                            "body": "Automated release from Jenkins",
+                            "draft": false,
+                            "prerelease": false
+                        }
+                        """
 
-                            upload_url=\$(jq -r '.upload_url' response.json | sed "s/{?name,label}//")
-                            curl -s -X POST -H "Authorization: token \$TOKEN" -H "Content-Type: application/zip" \
-                                --data-binary @${env.ZIP_NAME} "\$upload_url?name=${env.ZIP_NAME}"
+                        writeFile file: 'release.json', text: createPayload
+
+                        bat """
+                        curl -s -X POST -H "Authorization: token %TOKEN%" ^
+                            -H "Content-Type: application/json" ^
+                            --data @release.json ^
+                            ${apiUrl} > release_response.json
+                        """
+
+                        def json = readJSON file: 'release_response.json'
+                        def uploadUrl = json.upload_url.replace("{?name,label}", "") + "?name=${env.ZIP_FILE}"
+
+                        echo "📤 Uploading ${env.ZIP_FILE} to GitHub release..."
+                        bat """
+                        curl -X POST -H "Authorization: token %TOKEN%" ^
+                            -H "Content-Type: application/zip" ^
+                            --data-binary @${env.ZIP_FILE} ^
+                            "${uploadUrl}"
                         """
                     }
-
-                    def end = System.currentTimeMillis()
-                    echo "🚀 GitHub release took ${(end - start) / 1000}s"
                 }
             }
         }
 
-        stage('Cleanup Old Releases') {
+        stage('Delete Old Releases') {
             steps {
-                script {
-                    def start = System.currentTimeMillis()
+                withCredentials([string(credentialsId: env.GITHUB_CREDS, variable: 'TOKEN')]) {
+                    bat """
+                    curl -s -H "Authorization: token %TOKEN%" ^
+                        https://api.github.com/repos/${env.GITHUB_REPO}/releases > all.json
+                    """
+                    script {
+                        def releases = readJSON file: 'all.json'
+                        releases.sort { a, b -> b.created_at <=> a.created_at }
+                        def toDelete = releases.drop(env.RELEASES_TO_KEEP.toInteger())
 
-                    withCredentials([string(credentialsId: env.GITHUB_CREDS, variable: 'TOKEN')]) {
-                        sh """
-                            curl -s -H "Authorization: token \$TOKEN" https://api.github.com/repos/${env.GITHUB_REPO}/releases > all.json
-                            echo "🔍 Checking for old releases to delete..."
-
-                            ids=\$(jq -r '.[10:][] | .id' all.json)
-                            for id in \$ids; do
-                                echo "🗑️ Deleting release ID: \$id"
-                                curl -s -X DELETE -H "Authorization: token \$TOKEN" https://api.github.com/repos/${env.GITHUB_REPO}/releases/\$id
-                            done
-                        """
+                        toDelete.each { rel ->
+                            echo "🗑️ Deleting release: ${rel.tag_name}"
+                            bat """
+                            curl -s -X DELETE -H "Authorization: token %TOKEN%" ^
+                                https://api.github.com/repos/${env.GITHUB_REPO}/releases/${rel.id}
+                            """
+                        }
                     }
-
-                    def end = System.currentTimeMillis()
-                    echo "🧹 Cleanup took ${(end - start) / 1000}s"
                 }
             }
         }
@@ -135,14 +144,25 @@ pipeline {
 
     post {
         success {
-            mail to: "${env.EMAIL_RECIPIENTS}",
-                subject: "✅ Jenkins Build #${env.BUILD_NUMBER} Succeeded",
-                body: "The build completed successfully. View it at ${env.BUILD_URL}"
+            echo "✅ Build and release succeeded!"
+            // Uncomment if email is configured
+            
+            emailext(
+                subject: "✅ SUCCESS: Build #${env.BUILD_NUMBER}",
+                body: "Build succeeded and release was published: ${env.BUILD_URL}",
+                to: "${EMAIL_RECIPIENTS}"
+            )
+            
         }
         failure {
-            mail to: "${env.EMAIL_RECIPIENTS}",
-                subject: "❌ Jenkins Build #${env.BUILD_NUMBER} Failed",
-                body: "The build failed. Check details at ${env.BUILD_URL}"
+            echo "❌ Build failed!"
+            
+            emailext(
+                subject: "❌ FAILURE: Build #${env.BUILD_NUMBER}",
+                body: "Build failed. See logs: ${env.BUILD_URL}",
+                to: "${EMAIL_RECIPIENTS}"
+            )
+            
         }
     }
 }
