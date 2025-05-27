@@ -28,16 +28,20 @@ pipeline {
                     bat "if exist ${OUTPUT_DIR} rmdir /s /q ${OUTPUT_DIR}"
                     bat "mkdir ${OUTPUT_DIR}"
 
-                    // PowerShell: Find .java files that contain 'public static void main'
-                    bat 'powershell -Command "Get-ChildItem -Recurse -Filter *.java | Where-Object { Select-String -Path $_.FullName -Pattern \\"public static void main\\" } | ForEach-Object { $_.FullName } > main_java_files.txt"'
+                    // PowerShell: find .java files with main() and save clean UTF-8 file
+                    bat 'powershell -Command "Get-ChildItem -Recurse -Filter *.java | Where-Object { Select-String -Path $_.FullName -Pattern \\"public static void main\\" } | ForEach-Object { $_.FullName } | Set-Content -Path main_java_files.txt -Encoding UTF8"'
 
-                    def javaFiles = readFile('main_java_files.txt').split("\\r?\\n").findAll { it.trim() }
+                    // Read and sanitize
+                    def javaFiles = readFile('main_java_files.txt')
+                        .split("\\r?\\n")
+                        .collect { it.trim() }
+                        .findAll { it }
 
-                    if (javaFiles.size() == 0) {
-                        error "No Java files with main method found!"
+                    if (javaFiles.isEmpty()) {
+                        error "No Java files with a main method were found."
                     }
 
-                    def rootJarApps = ['AppMainRoot'] // Optional: place some jars in root
+                    def rootJarApps = ['AppMainRoot']
 
                     def builds = javaFiles.collectEntries { filePath ->
                         def fileName = filePath.tokenize('\\\\')[-1]
