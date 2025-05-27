@@ -2,23 +2,24 @@ pipeline {
     agent any
 
     triggers {
-        pollSCM('H/10 * * * *') // Poll Git every 10 mins
+        pollSCM('H/10 * * * *')
     }
 
     environment {
         OUTPUT_DIR = 'out'
         RELEASE_PACKAGE_DIR = 'release_package'
-        GITHUB_REPO = 'SchaleSensei-Repo/Java-Vibe-Coding-BunchAThings' // Format: "owner/repo"
-        GITHUB_CREDS = 'GITHUB_PAT'         // Credential ID for GitHub PAT
+        GITHUB_REPO = 'SchaleSensei-Repo/Java-Vibe-Coding-BunchAThings'
+        GITHUB_CREDS = 'GITHUB_PAT'
         RELEASES_TO_KEEP = 3
         EMAIL_RECIPIENTS = 'ashlovedawn@gmail.com'
-        LIBS_DIR_PATH = 'libs' // Relative path within the workspace
+        LIBS_DIR_PATH = 'libs'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                // Ensure you are checking out the commit that HAS the corrected Jenkinsfile
+                checkout scm 
             }
         }
 
@@ -26,7 +27,6 @@ pipeline {
             steps {
                 script {
                     def start = System.currentTimeMillis()
-                    // Paths for rmdir/mkdir are relative to workspace, which is fine for bat steps
                     bat "if exist \"${OUTPUT_DIR}\" rmdir /s /q \"${OUTPUT_DIR}\""
                     bat "mkdir \"${OUTPUT_DIR}\""
 
@@ -47,7 +47,7 @@ pipeline {
                     def encodedCommand = scriptBytes.encodeBase64().toString()
                     bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
                     
-                    echo "Listing workspace root contents (use 'ls -la' for Linux agents if 'dir' fails):"
+                    echo "Listing workspace root contents:"
                     bat "dir /b" 
 
                     def javaFileContent = readFile(file: 'main_java_files.txt', encoding: 'UTF-8').trim()
@@ -66,9 +66,8 @@ pipeline {
                     def rootJarApps = ['AppMainRoot'] 
 
                     def dependencyJars = []
-                    // ** FIX: Construct absolute path to libs directory using env.WORKSPACE **
                     def workspacePath = env.WORKSPACE 
-                    def absoluteLibsDirPath = "${workspacePath}/${env.LIBS_DIR_PATH}".replace('/', File.separator) // Ensure OS-specific separator
+                    def absoluteLibsDirPath = "${workspacePath}\\${env.LIBS_DIR_PATH}".replace('/', File.separator) // Ensure OS-specific separator
 
                     echo "DEBUG: Workspace path: '${workspacePath}'"
                     echo "DEBUG: LIBS_DIR_PATH from environment: '${env.LIBS_DIR_PATH}'"
@@ -84,12 +83,22 @@ pipeline {
                        echo "DEBUG: Is libsDir a file? ${libsDir.isFile()}"
 
                        if (libsDir.isDirectory()) { 
-                           echo "SUCCESS: '${absoluteLibsDirPath}' is a directory. Scanning for JARs..."
-                           libsDir.eachFile { f -> 
-                               if (f.name.endsWith(".jar")) {
-                                   dependencyJars.add(f.getAbsolutePath().replace('/', '\\')) 
-                                   echo "DEBUG: Found dependency JAR: ${f.getAbsolutePath()}"
+                           echo "SUCCESS: '${absoluteLibsDirPath}' is a directory. Listing its contents via 'bat dir':"
+                           // ** ADDED: Explicitly list contents of libs dir using bat **
+                           bat "dir \"${absoluteLibsDirPath}\"" 
+
+                           echo "Scanning for JARs in '${absoluteLibsDirPath}' using listFiles()..."
+                           // ** CORRECTED ITERATION METHOD **
+                           File[] filesInLibsDir = libsDir.listFiles()
+                           if (filesInLibsDir != null) {
+                               for (File f : filesInLibsDir) {
+                                   if (f.isFile() && f.getName().toLowerCase().endsWith(".jar")) {
+                                       dependencyJars.add(f.getAbsolutePath().replace('/', '\\')) 
+                                       echo "DEBUG: Found dependency JAR: ${f.getAbsolutePath()}"
+                                   }
                                }
+                           } else {
+                               echo "WARNING: listFiles() returned null for '${absoluteLibsDirPath}'. Check permissions or if it's accessible."
                            }
                        } else {
                            echo "WARNING: Calculated libs path '${absoluteLibsDirPath}' is NOT a directory (exists: ${libsDir.exists()})."
@@ -101,7 +110,7 @@ pipeline {
                     if (!dependencyJars.isEmpty()) {
                         echo "Found dependency JARs to add to classpath: ${dependencyJars.join(File.pathSeparator)}"
                     } else {
-                        echo "WARNING: No external dependency JARs found. Compilation will likely fail. Check the 'libs' directory ('${absoluteLibsDirPath}') and its contents."
+                        echo "WARNING: No external dependency JARs found. Compilation will likely fail. Ensure required .jar files are in the 'libs' directory ('${absoluteLibsDirPath}') in your repository."
                     }
                     def commonClassPath = dependencyJars.join(File.pathSeparator)
                     String classPathOpt = commonClassPath.isEmpty() ? "" : "-cp \"${commonClassPath}\""
@@ -111,24 +120,23 @@ pipeline {
                         def fileName = groovyFilePath.tokenize('/')[-1]
                         def classNameOnly = fileName.replace('.java', '') 
                         String packageSubPath = ""
-                        String srcDirForSourcepathRelative = "" // This will be relative to workspace
+                        String srcDirForSourcepathRelative = "" 
                         String fqcn = classNameOnly 
-                        int srcMainJavaIdx = groovyFilePath.lastIndexOf("src/main/java/")
-                        int srcIdx = groovyFilePath.lastIndexOf("src/")
+                        int srcMainJavaIdxInRelative = -1
+                        int srcIdxInRelative = -1
                         int packageStartIndexInFilePath = -1
 
-                        // Determine srcDirForSourcepathRelative (path from workspace root to the java root dir like "project/src/main/java")
-                        // fullFilePath is absolute. We need to make srcDirForSourcepath relative or ensure javac gets absolute.
                         String workspacePrefix = env.WORKSPACE.replace('\\', '/') + "/"
                         String relativeFilePathToWorkspace = groovyFilePath.startsWith(workspacePrefix) ? groovyFilePath.substring(workspacePrefix.length()) : groovyFilePath
                         
-                        if (relativeFilePathToWorkspace.lastIndexOf("src/main/java/") != -1) {
-                            srcMainJavaIdx = relativeFilePathToWorkspace.lastIndexOf("src/main/java/")
-                            packageStartIndexInFilePath = srcMainJavaIdx + "src/main/java/".length()
+                        srcMainJavaIdxInRelative = relativeFilePathToWorkspace.lastIndexOf("src/main/java/")
+                        srcIdxInRelative = relativeFilePathToWorkspace.lastIndexOf("src/")
+
+                        if (srcMainJavaIdxInRelative != -1) {
+                            packageStartIndexInFilePath = srcMainJavaIdxInRelative + "src/main/java/".length()
                             srcDirForSourcepathRelative = relativeFilePathToWorkspace.substring(0, packageStartIndexInFilePath -1)
-                        } else if (relativeFilePathToWorkspace.lastIndexOf("src/") != -1) {
-                            srcIdx = relativeFilePathToWorkspace.lastIndexOf("src/")
-                            packageStartIndexInFilePath = srcIdx + "src/".length()
+                        } else if (srcIdxInRelative != -1) {
+                            packageStartIndexInFilePath = srcIdxInRelative + "src/".length()
                             srcDirForSourcepathRelative = relativeFilePathToWorkspace.substring(0, packageStartIndexInFilePath -1)
                         } else {
                             String currentPath = relativeFilePathToWorkspace.contains('/') ? relativeFilePathToWorkspace.substring(0, relativeFilePathToWorkspace.lastIndexOf('/')) : '.'
@@ -160,42 +168,34 @@ pipeline {
                             fqcn = packageSubPath.replace('/', '.') + "." + classNameOnly
                         }
 
-                        // appClassOutputDir is relative to workspace for bat commands
                         def appClassOutputDirRelative = "${OUTPUT_DIR}/${classNameOnly}_classes".replace('/', '\\')
-                        def appClassOutputDirAbsolute = "${env.WORKSPACE}/${appClassOutputDirRelative}".replace('/', File.separator)
-
+                        
                         bat "if exist \"${appClassOutputDirRelative}\" rmdir /s /q \"${appClassOutputDirRelative}\""
                         bat "mkdir \"${appClassOutputDirRelative}\""
                         
                         [(classNameOnly): { 
-                            // jarPath is relative to workspace for bat commands
                             def jarName = "${classNameOnly}.jar"
                             def jarPathRelative = rootJarApps.contains(classNameOnly)
                                 ? jarName.replace('/', '\\') 
                                 : "${OUTPUT_DIR}\\${jarName}".replace('/', '\\')
-                            def jarPathAbsolute = "${env.WORKSPACE}/${jarPathRelative}".replace('/', File.separator)
-
 
                             echo "--- Processing: ${classNameOnly} ---"
-                            echo "  Source File: ${fullFilePath}" // Already absolute
+                            echo "  Source File: ${fullFilePath}" 
                             echo "  FQCN: ${fqcn}"
-                            // For javac -sourcepath, it's often easier to use paths relative to where javac is invoked (workspace)
-                            // or absolute paths. Since bat commands run in workspace, relative srcDirForSourcepath is fine.
                             echo "  Sourcepath for javac (relative to workspace): ${srcDirForSourcepathRelative}" 
                             echo "  .class output directory (relative to workspace): ${appClassOutputDirRelative}"
                             echo "  Output JAR (relative to workspace): ${jarPathRelative}"
                             if (!commonClassPath.isEmpty()) {
-                                echo "  Compiler Classpath: ${commonClassPath}" // This IS absolute paths to JARs
+                                echo "  Compiler Classpath: ${commonClassPath}" 
                             }
 
-                            String batFullFilePath = fullFilePath.replace('/', '\\') // This is absolute
-                            String batSrcDirForSourcepathCmd = srcDirForSourcepathRelative.replace('/', '\\') // Relative to workspace
+                            String batFullFilePath = fullFilePath.replace('/', '\\') 
+                            String batSrcDirForSourcepathCmd = srcDirForSourcepathRelative.replace('/', '\\') 
                             
                             def compileCommand = "javac -encoding UTF-8 ${classPathOpt} -d \"${appClassOutputDirRelative}\" -sourcepath \"${batSrcDirForSourcepathCmd}\" \"${batFullFilePath}\""
                             echo "  Compile CMD: ${compileCommand}"
                             bat compileCommand
 
-                            // jar command also runs in workspace CWD
                             def jarCommand = "jar cfe \"${jarPathRelative}\" ${fqcn} -C \"${appClassOutputDirRelative}\" ."
                             echo "  JAR CMD: ${jarCommand}"
                             bat jarCommand
@@ -213,7 +213,6 @@ pipeline {
 
         stage('Create Release Package') {
             steps {
-                // Paths relative to workspace are fine here for bat commands
                 bat "if exist \"${RELEASE_PACKAGE_DIR}\" rmdir /s /q \"${RELEASE_PACKAGE_DIR}\""
                 bat "mkdir \"${RELEASE_PACKAGE_DIR}\""
                 
@@ -222,8 +221,8 @@ pipeline {
                 script {
                     def rootJarAppsList = ['AppMainRoot'] 
                     rootJarAppsList.each { appName ->
-                        def jarFile = "${appName}.jar" // Relative to workspace
-                        if (fileExists(jarFile)) { // fileExists checks relative to workspace
+                        def jarFile = "${appName}.jar"
+                        if (fileExists(jarFile)) {
                             bat "copy \"${jarFile}\" \"${RELEASE_PACKAGE_DIR}\\\""
                         } else {
                             echo "Warning: Root JAR ${jarFile} not found in workspace root."
@@ -238,12 +237,11 @@ pipeline {
                 script {
                     def tag = "build-${env.BUILD_NUMBER}"
                     def message = "Automated build ${env.BUILD_NUMBER}"
-                    def zipFile = "${RELEASE_PACKAGE_DIR}.zip" // Relative to workspace
+                    def zipFile = "${RELEASE_PACKAGE_DIR}.zip" 
 
-                    // Compress-Archive paths should be relative to powershell's CWD (which is workspace)
                     bat "powershell Compress-Archive -Path \"${RELEASE_PACKAGE_DIR}\\*\" -DestinationPath \"${zipFile}\" -Force"
                     
-                    String releaseData = "{ \\\"tag_name\\\": \\\"${tag}\\\", \\\"name\\\": \\\"${tag}\\\", \\\"body\\\": \\\"${message}\\\", \\\"draft\\\": false, \\\"prerelease\\\": false }"
+                    String releaseData = "{ \\\"tag_name\\\": \\\"${tag}\\\", \\\"name\\\": \\\"${tag}\\\", \\\"body\\\": \\\"${message}\\\", \\\"draft\\\": false, \\\"prerelease\\": false }"
 
                     withCredentials([string(credentialsId: "${GITHUB_CREDS}", variable: 'GH_TOKEN')]) {
                         bat """
