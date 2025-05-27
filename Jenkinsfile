@@ -29,12 +29,7 @@ pipeline {
                     bat "mkdir ${OUTPUT_DIR}"
 
                     // Use PowerShell to find Java files that contain a main method
-                    def psCommand = '''
-                        Get-ChildItem -Recurse -Filter *.java | 
-                        Where-Object { Select-String -Path $_.FullName -Pattern 'public static void main' } |
-                        ForEach-Object { $_.FullName } > main_java_files.txt
-                    '''
-                    bat "powershell -Command \"${psCommand.trim()}\""
+                    bat 'powershell -Command "Get-ChildItem -Recurse -Filter *.java | Where-Object { Select-String -Path $_.FullName -Pattern \\"public static void main\\" } | ForEach-Object { $_.FullName } > main_java_files.txt"'
 
                     def javaFiles = readFile('main_java_files.txt').split("\\r?\\n").findAll { it.trim() }
 
