@@ -12,7 +12,7 @@ pipeline {
         GITHUB_CREDS = 'GITHUB_PAT'         // Credential ID for GitHub PAT
         RELEASES_TO_KEEP = 3
         EMAIL_RECIPIENTS = 'ashlovedawn@gmail.com'
-        LIBS_DIR_PATH = 'libs' // Assuming your libs folder is at the root of the repo
+        LIBS_DIR_PATH = 'libs' // Crucial: Assumes your libs folder is at the root of the repo
     }
 
     stages {
@@ -29,7 +29,6 @@ pipeline {
                     bat "if exist \"${OUTPUT_DIR}\" rmdir /s /q \"${OUTPUT_DIR}\""
                     bat "mkdir \"${OUTPUT_DIR}\""
 
-                    // CORRECTED: PowerShell script execution using -EncodedCommand
                     def psScriptContent = '''
                         $ErrorActionPreference = 'Stop';
                         $javaFilePaths = Get-ChildItem -Recurse -Filter *.java |
@@ -41,14 +40,17 @@ pipeline {
                             Write-Host 'No Java files with a main method were found.';
                             Set-Content -Path 'main_java_files.txt' -Value ''
                         }
-                    '''.stripIndent() // Use triple-single-quotes to avoid Groovy interpolation issues with $
+                    '''.stripIndent()
 
-                    // Encode the PowerShell script to Base64 (UTF-16LE encoding)
                     byte[] scriptBytes = psScriptContent.getBytes("UTF-16LE")
                     def encodedCommand = scriptBytes.encodeBase64().toString()
-
                     bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
                     
+                    // ---- START DEBUGGING LIBS DIRECTORY ----
+                    echo "Listing workspace root contents (use 'ls -la' for Linux agents if 'dir' fails):"
+                    bat "dir /b" 
+                    // ---- END DEBUGGING LIBS DIRECTORY ----
+
                     def javaFileContent = readFile(file: 'main_java_files.txt', encoding: 'UTF-8').trim()
                     if (javaFileContent.isEmpty()) {
                         error "No Java files with a main method were found (main_java_files.txt is empty or PowerShell script failed silently)."
@@ -65,26 +67,40 @@ pipeline {
                     def rootJarApps = ['AppMainRoot'] 
 
                     def dependencyJars = []
-                    def actualLibsDirPath = env.LIBS_DIR_PATH // Get the value once
+                    def actualLibsDirPath = env.LIBS_DIR_PATH
+                    echo "DEBUG: Expected LIBS_DIR_PATH from environment: '${actualLibsDirPath}'"
+
                     if (actualLibsDirPath) {
-                       def libsDir = new File(actualLibsDirPath)
-                       if (libsDir.isDirectory()) {
+                       def libsDir = new File(actualLibsDirPath) 
+                       echo "DEBUG: libsDir object refers to path: '${libsDir.getPath()}'"
+                       echo "DEBUG: Absolute path for libsDir: '${libsDir.getAbsolutePath()}'"
+                       echo "DEBUG: Does libsDir exist? ${libsDir.exists()}"
+                       echo "DEBUG: Is libsDir a directory? ${libsDir.isDirectory()}"
+                       echo "DEBUG: Is libsDir a file? ${libsDir.isFile()}"
+
+                       if (libsDir.isDirectory()) { 
+                           echo "SUCCESS: '${actualLibsDirPath}' is a directory. Scanning for JARs..."
                            libsDir.eachFile { f -> 
                                if (f.name.endsWith(".jar")) {
                                    dependencyJars.add(f.absolutePath.replace('/', '\\'))
+                                   echo "DEBUG: Found dependency JAR: ${f.absolutePath}"
                                }
                            }
                        } else {
-                           echo "Warning: LIBS_DIR_PATH '${actualLibsDirPath}' is not a directory."
+                           echo "WARNING: LIBS_DIR_PATH '${actualLibsDirPath}' resolved to '${libsDir.getAbsolutePath()}' which is NOT a directory (exists: ${libsDir.exists()})."
                        }
+                    } else {
+                        echo "WARNING: LIBS_DIR_PATH environment variable is not set."
                     }
                     
                     if (!dependencyJars.isEmpty()) {
-                        echo "Found dependency JARs: ${dependencyJars.join(', ')}"
+                        echo "Found dependency JARs to add to classpath: ${dependencyJars.join(', ')}"
                     } else {
-                        echo "No external dependency JARs configured or found in '${actualLibsDirPath}'. Compilation might fail for projects needing them."
+                        echo "WARNING: No external dependency JARs found. Compilation will likely fail for projects needing them. Check the 'libs' directory and its contents in the workspace."
                     }
                     def commonClassPath = dependencyJars.join(File.pathSeparator)
+                    String classPathOpt = commonClassPath.isEmpty() ? "" : "-cp \"${commonClassPath}\""
+
 
                     def builds = javaFiles.collectEntries { fullFilePath ->
                         String groovyFilePath = fullFilePath.replace('\\', '/') 
@@ -156,7 +172,6 @@ pipeline {
                             String batFullFilePath = fullFilePath.replace('/', '\\')
                             String batSrcDirForSourcepath = srcDirForSourcepath.replace('/', '\\')
                             String batAppClassOutputDir = appClassOutputDir.replace('/', '\\')
-                            String classPathOpt = commonClassPath.isEmpty() ? "" : "-cp \"${commonClassPath}\""
                             
                             def compileCommand = "javac -encoding UTF-8 ${classPathOpt} -d \"${batAppClassOutputDir}\" -sourcepath \"${batSrcDirForSourcepath}\" \"${batFullFilePath}\""
                             echo "  Compile CMD: ${compileCommand}"
