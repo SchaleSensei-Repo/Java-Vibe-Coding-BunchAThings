@@ -731,7 +731,7 @@ public class JarHubApp extends JFrame {
         }
     }
 
-    private static boolean acquireSingleInstanceLock() {
+    static boolean acquireSingleInstanceLock() {
         String tempDir = System.getProperty("java.io.tmpdir");
         if (tempDir == null) tempDir = ".";
         lockFileHandle = new File(tempDir, "JarHubApp.lock");
@@ -755,7 +755,7 @@ public class JarHubApp extends JFrame {
         }
     }
     
-    private static void releaseSingleInstanceLockOnly() {
+    static void releaseSingleInstanceLockOnly() {
          try {
             if (lock != null && lock.isValid()) lock.release();
             if (channel != null && channel.isOpen()) channel.close();
