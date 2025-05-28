@@ -13,13 +13,16 @@ pipeline {
         RELEASES_TO_KEEP = 3
         EMAIL_RECIPIENTS = 'ashlovedawn@gmail.com'
         LIBS_DIR_PATH = 'libs'
+        TEST_SRC_DIR = 'src/test/java'        // New: For JUnit tests
+        TEST_CLASSES_DIR = 'out/test-classes' // New: Output for compiled tests
+        TEST_REPORTS_DIR = 'out/test-reports' // New: JUnit XML reports
     }
 
     stages {
         stage('Checkout') {
             steps {
                 // Ensure you are checking out the commit that HAS the corrected Jenkinsfile
-                checkout scm 
+                checkout scm
             }
         }
 
@@ -46,9 +49,9 @@ pipeline {
                     byte[] scriptBytes = psScriptContent.getBytes("UTF-16LE")
                     def encodedCommand = scriptBytes.encodeBase64().toString()
                     bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
-                    
+
                     echo "Listing workspace root contents:"
-                    bat "dir /b" 
+                    bat "dir /b"
 
                     def javaFileContent = readFile(file: 'main_java_files.txt', encoding: 'UTF-8').trim()
                     if (javaFileContent.isEmpty()) {
@@ -63,10 +66,10 @@ pipeline {
                         error "No Java files with a main method were found after processing main_java_files.txt."
                     }
 
-                    def rootJarApps = ['AppMainRoot'] 
+                    def rootJarApps = ['AppMainRoot']
 
                     def dependencyJars = []
-                    def workspacePath = env.WORKSPACE 
+                    def workspacePath = env.WORKSPACE
                     def absoluteLibsDirPath = "${workspacePath}\\${env.LIBS_DIR_PATH}".replace('/', File.separator) // Ensure OS-specific separator
 
                     echo "DEBUG: Workspace path: '${workspacePath}'"
@@ -74,26 +77,24 @@ pipeline {
                     echo "DEBUG: Calculated absolute path for libs directory: '${absoluteLibsDirPath}'"
 
                     if (env.LIBS_DIR_PATH) {
-                       def libsDir = new File(absoluteLibsDirPath) 
-                       
+                       def libsDir = new File(absoluteLibsDirPath)
+
                        echo "DEBUG: libsDir object refers to path: '${libsDir.getPath()}'"
                        echo "DEBUG: Absolute path for libsDir (from getAbsolutePath()): '${libsDir.getAbsolutePath()}'"
                        echo "DEBUG: Does libsDir exist? ${libsDir.exists()}"
                        echo "DEBUG: Is libsDir a directory? ${libsDir.isDirectory()}"
                        echo "DEBUG: Is libsDir a file? ${libsDir.isFile()}"
 
-                       if (libsDir.isDirectory()) { 
+                       if (libsDir.isDirectory()) {
                            echo "SUCCESS: '${absoluteLibsDirPath}' is a directory. Listing its contents via 'bat dir':"
-                           // ** ADDED: Explicitly list contents of libs dir using bat **
-                           bat "dir \"${absoluteLibsDirPath}\"" 
+                           bat "dir \"${absoluteLibsDirPath}\""
 
                            echo "Scanning for JARs in '${absoluteLibsDirPath}' using listFiles()..."
-                           // ** CORRECTED ITERATION METHOD **
                            File[] filesInLibsDir = libsDir.listFiles()
                            if (filesInLibsDir != null) {
                                for (File f : filesInLibsDir) {
                                    if (f.isFile() && f.getName().toLowerCase().endsWith(".jar")) {
-                                       dependencyJars.add(f.getAbsolutePath().replace('/', '\\')) 
+                                       dependencyJars.add(f.getAbsolutePath().replace('/', '\\'))
                                        echo "DEBUG: Found dependency JAR: ${f.getAbsolutePath()}"
                                    }
                                }
@@ -106,7 +107,7 @@ pipeline {
                     } else {
                         echo "WARNING: LIBS_DIR_PATH environment variable is not set."
                     }
-                    
+
                     if (!dependencyJars.isEmpty()) {
                         echo "Found dependency JARs to add to classpath: ${dependencyJars.join(File.pathSeparator)}"
                     } else {
@@ -116,19 +117,19 @@ pipeline {
                     String classPathOpt = commonClassPath.isEmpty() ? "" : "-cp \"${commonClassPath}\""
 
                     def builds = javaFiles.collectEntries { fullFilePath ->
-                        String groovyFilePath = fullFilePath.replace('\\', '/') 
+                        String groovyFilePath = fullFilePath.replace('\\', '/')
                         def fileName = groovyFilePath.tokenize('/')[-1]
-                        def classNameOnly = fileName.replace('.java', '') 
+                        def classNameOnly = fileName.replace('.java', '')
                         String packageSubPath = ""
-                        String srcDirForSourcepathRelative = "" 
-                        String fqcn = classNameOnly 
+                        String srcDirForSourcepathRelative = ""
+                        String fqcn = classNameOnly
                         int srcMainJavaIdxInRelative = -1
                         int srcIdxInRelative = -1
                         int packageStartIndexInFilePath = -1
 
                         String workspacePrefix = env.WORKSPACE.replace('\\', '/') + "/"
                         String relativeFilePathToWorkspace = groovyFilePath.startsWith(workspacePrefix) ? groovyFilePath.substring(workspacePrefix.length()) : groovyFilePath
-                        
+
                         srcMainJavaIdxInRelative = relativeFilePathToWorkspace.lastIndexOf("src/main/java/")
                         srcIdxInRelative = relativeFilePathToWorkspace.lastIndexOf("src/")
 
@@ -153,45 +154,45 @@ pipeline {
                             if ( (lastPotentialPackagePartIndex + 1) < pathParts.size() ) {
                                 packageSubPath = pathParts.subList(lastPotentialPackagePartIndex + 1, pathParts.size()).join('/')
                             }
-                            if (srcDirForSourcepathRelative.isEmpty() && currentPath != '.') { 
+                            if (srcDirForSourcepathRelative.isEmpty() && currentPath != '.') {
                                 srcDirForSourcepathRelative = currentPath
                             } else if (srcDirForSourcepathRelative.isEmpty() && currentPath == '.') {
-                                srcDirForSourcepathRelative = "." 
+                                srcDirForSourcepathRelative = "."
                             }
                         }
-                        
+
                         if (packageStartIndexInFilePath != -1 && relativeFilePathToWorkspace.lastIndexOf('/') > packageStartIndexInFilePath) {
                             packageSubPath = relativeFilePathToWorkspace.substring(packageStartIndexInFilePath, relativeFilePathToWorkspace.lastIndexOf('/'))
                         }
-                        
+
                         if (!packageSubPath.isEmpty()) {
                             fqcn = packageSubPath.replace('/', '.') + "." + classNameOnly
                         }
 
                         def appClassOutputDirRelative = "${OUTPUT_DIR}/${classNameOnly}_classes".replace('/', '\\')
-                        
+
                         bat "if exist \"${appClassOutputDirRelative}\" rmdir /s /q \"${appClassOutputDirRelative}\""
                         bat "mkdir \"${appClassOutputDirRelative}\""
-                        
-                        [(classNameOnly): { 
+
+                        [(classNameOnly): {
                             def jarName = "${classNameOnly}.jar"
                             def jarPathRelative = rootJarApps.contains(classNameOnly)
-                                ? jarName.replace('/', '\\') 
+                                ? jarName.replace('/', '\\')
                                 : "${OUTPUT_DIR}\\${jarName}".replace('/', '\\')
 
                             echo "--- Processing: ${classNameOnly} ---"
-                            echo "  Source File: ${fullFilePath}" 
+                            echo "  Source File: ${fullFilePath}"
                             echo "  FQCN: ${fqcn}"
-                            echo "  Sourcepath for javac (relative to workspace): ${srcDirForSourcepathRelative}" 
+                            echo "  Sourcepath for javac (relative to workspace): ${srcDirForSourcepathRelative}"
                             echo "  .class output directory (relative to workspace): ${appClassOutputDirRelative}"
                             echo "  Output JAR (relative to workspace): ${jarPathRelative}"
                             if (!commonClassPath.isEmpty()) {
-                                echo "  Compiler Classpath: ${commonClassPath}" 
+                                echo "  Compiler Classpath: ${commonClassPath}"
                             }
 
-                            String batFullFilePath = fullFilePath.replace('/', '\\') 
-                            String batSrcDirForSourcepathCmd = srcDirForSourcepathRelative.replace('/', '\\') 
-                            
+                            String batFullFilePath = fullFilePath.replace('/', '\\')
+                            String batSrcDirForSourcepathCmd = srcDirForSourcepathRelative.replace('/', '\\')
+
                             def compileCommand = "javac -encoding UTF-8 ${classPathOpt} -d \"${appClassOutputDirRelative}\" -sourcepath \"${batSrcDirForSourcepathCmd}\" \"${batFullFilePath}\""
                             echo "  Compile CMD: ${compileCommand}"
                             bat compileCommand
@@ -211,15 +212,130 @@ pipeline {
             }
         }
 
+        stage('Unit Tests') {
+            steps {
+                script {
+                    echo "--- Starting Unit Tests ---"
+                    def workspacePath = env.WORKSPACE
+                    def testClassesDir = "${workspacePath}\\${env.TEST_CLASSES_DIR}".replace('/', File.separator)
+                    def testReportsDir = "${workspacePath}\\${env.TEST_REPORTS_DIR}".replace('/', File.separator)
+                    def testSrcDir = "${workspacePath}\\${env.TEST_SRC_DIR}".replace('/', File.separator)
+
+                    bat "if exist \"${testClassesDir}\" rmdir /s /q \"${testClassesDir}\""
+                    bat "mkdir \"${testClassesDir}\""
+                    bat "if exist \"${testReportsDir}\" rmdir /s /q \"${testReportsDir}\""
+                    bat "mkdir \"${testReportsDir}\""
+
+                    // 1. Find test files
+                    def psFindTestsScript = """
+                        \$ErrorActionPreference = 'Stop';
+                        \$testJavaFilePaths = Get-ChildItem -Path "${testSrcDir}" -Recurse -Filter *.java |
+                            ForEach-Object { \$_.FullName };
+                        if (\$null -ne \$testJavaFilePaths -and \$testJavaFilePaths.Count -gt 0) {
+                            [System.IO.File]::WriteAllLines('test_java_files.txt', \$testJavaFilePaths, [System.Text.UTF8Encoding]::new(\$false))
+                        } else {
+                            Write-Host "No Java files found in ${testSrcDir}."
+                            Set-Content -Path 'test_java_files.txt' -Value ''
+                        }
+                    """.stripIndent()
+                    byte[] testScriptBytes = psFindTestsScript.getBytes("UTF-16LE")
+                    def encodedTestCommand = testScriptBytes.encodeBase64().toString()
+                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedTestCommand}"
+
+                    def testFileContent = readFile(file: 'test_java_files.txt', encoding: 'UTF-8').trim()
+                    if (testFileContent.isEmpty()) {
+                        echo "No Java test files found in ${env.TEST_SRC_DIR}. Skipping test execution."
+                        // junit step with allowEmptyResults: true will handle this gracefully
+                    } else {
+                        def testJavaFiles = testFileContent.split("\\r?\\n").collect { it.trim() }.findAll { it }
+                        if (testJavaFiles.isEmpty()) {
+                            echo "No Java test files found after processing test_java_files.txt. Skipping test execution."
+                        } else {
+                            echo "Found test files: ${testJavaFiles}"
+
+                            // 2. Prepare Classpath for test compilation and execution
+                            def absoluteLibsDirPath = "${workspacePath}\\${env.LIBS_DIR_PATH}".replace('/', File.separator)
+                            def dependencyJarsForTests = []
+                            if (env.LIBS_DIR_PATH) {
+                                def libsDirFile = new File(absoluteLibsDirPath)
+                                if (libsDirFile.isDirectory()) {
+                                    File[] filesInLibsDir = libsDirFile.listFiles()
+                                    if (filesInLibsDir != null) {
+                                        for (File f : filesInLibsDir) {
+                                            if (f.isFile() && f.getName().toLowerCase().endsWith(".jar")) {
+                                                dependencyJarsForTests.add(f.getAbsolutePath().replace('/', '\\'))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (dependencyJarsForTests.isEmpty()) {
+                                echo "WARNING: No dependency JARs found in '${absoluteLibsDirPath}'. Tests might fail to compile or run."
+                                echo "Ensure JUnit 5 Jupiter JARs (e.g., junit-jupiter-api, junit-jupiter-engine, junit-platform-console-standalone) are in this directory."
+                            }
+
+                            def appClassesDirs = []
+                            File outputDirFile = new File("${workspacePath}\\${env.OUTPUT_DIR}".replace('/', File.separator))
+                            if (outputDirFile.isDirectory()) {
+                                outputDirFile.eachDir { dir -> // Groovy File.eachDir
+                                    if (dir.name.endsWith("_classes")) {
+                                        appClassesDirs.add(dir.getAbsolutePath().replace('/', '\\'))
+                                    }
+                                }
+                            }
+                            echo "Application class directories for classpath: ${appClassesDirs}"
+
+                            def testCompileClasspathList = dependencyJarsForTests + appClassesDirs
+                            def testCompileClasspath = testCompileClasspathList.join(File.pathSeparator)
+                            String testCompileCpOpt = testCompileClasspath.isEmpty() ? "" : "-cp \"${testCompileClasspath}\""
+
+                            // 3. Compile Test Files
+                            def testFilesToCompile = testJavaFiles.collect { "\"${it.replace('/', '\\')}\"" }.join(" ")
+                            // Ensure testSrcDir is used as sourcepath for javac
+                            def testCompileCommand = "javac -encoding UTF-8 ${testCompileCpOpt} -d \"${testClassesDir}\" -sourcepath \"${testSrcDir}\" ${testFilesToCompile}"
+                            echo "Test Compile CMD: ${testCompileCommand}"
+                            try {
+                                bat testCompileCommand
+                            } catch (e) {
+                                error "Test compilation failed. ${e.getMessage()}"
+                            }
+
+                            // 4. Run Tests using JUnit Platform Console Standalone
+                            def junitConsoleLauncherJar = dependencyJarsForTests.find { it.toLowerCase().contains("junit-platform-console-standalone") }
+                            if (!junitConsoleLauncherJar) {
+                                error "JUnit Platform Console Standalone JAR not found in libs directory ('${absoluteLibsDirPath}'). Cannot run tests. Make sure it's named something like 'junit-platform-console-standalone-X.Y.Z.jar'."
+                            }
+
+                            def testRuntimeClasspathList = [testClassesDir] + appClassesDirs + dependencyJarsForTests
+                            def testRuntimeClasspath = testRuntimeClasspathList.join(File.pathSeparator)
+
+                            def runTestsCommand = "java -jar \"${junitConsoleLauncherJar}\" --classpath \"${testRuntimeClasspath}\" --scan-classpath --reports-dir \"${testReportsDir}\""
+                            echo "Run Tests CMD: ${runTestsCommand}"
+                            try {
+                                bat runTestsCommand
+                            } catch (e) {
+                                echo "JUnit Console Launcher finished. Non-zero exit code indicates test failures or errors, which will be processed by the JUnit publisher."
+                                echo "Message (if any): ${e.getMessage()}"
+                            }
+                        }
+                    }
+                    // 5. Publish Test Results
+                    // testResults path should be relative to workspace
+                    junit allowEmptyResults: true, testResults: "${env.TEST_REPORTS_DIR}/**/*.xml"
+                    echo "--- Finished Unit Tests ---"
+                }
+            }
+        }
+
         stage('Create Release Package') {
             steps {
                 bat "if exist \"${RELEASE_PACKAGE_DIR}\" rmdir /s /q \"${RELEASE_PACKAGE_DIR}\""
                 bat "mkdir \"${RELEASE_PACKAGE_DIR}\""
-                
+
                 bat "xcopy \"${OUTPUT_DIR}\\*.jar\" \"${RELEASE_PACKAGE_DIR}\\\" /Y /I > nul 2>&1 || echo No JARs in ${OUTPUT_DIR} to copy."
-                
+
                 script {
-                    def rootJarAppsList = ['AppMainRoot'] 
+                    def rootJarAppsList = ['AppMainRoot']
                     rootJarAppsList.each { appName ->
                         def jarFile = "${appName}.jar"
                         if (fileExists(jarFile)) {
@@ -237,10 +353,10 @@ pipeline {
                 script {
                     def tag = "build-${env.BUILD_NUMBER}"
                     def message = "Automated build ${env.BUILD_NUMBER}"
-                    def zipFile = "${RELEASE_PACKAGE_DIR}.zip" 
+                    def zipFile = "${RELEASE_PACKAGE_DIR}.zip"
 
                     bat "powershell Compress-Archive -Path \"${RELEASE_PACKAGE_DIR}\\*\" -DestinationPath \"${zipFile}\" -Force"
-                    
+
                     String releaseData = "{ \\\"tag_name\\\": \\\"${tag}\\\", \\\"name\\\": \\\"${tag}\\\", \\\"body\\\": \\\"${message}\\\", \\\"draft\\\": false, \\\"prerelease\\\": false }"
 
                     withCredentials([string(credentialsId: "${GITHUB_CREDS}", variable: 'GH_TOKEN')]) {
