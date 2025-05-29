@@ -13,8 +13,8 @@ pipeline {
         RELEASES_TO_KEEP = 3
         EMAIL_RECIPIENTS = 'ashlovedawn@gmail.com'
         LIBS_DIR_PATH = 'libs'
-        TEST_CLASSES_DIR_BASE = 'out/test-classes' 
-        TEST_REPORTS_DIR_BASE = 'out/test-reports' 
+        TEST_CLASSES_DIR_BASE = 'out/test-classes'
+        TEST_REPORTS_DIR_BASE = 'out/test-reports'
     }
 
     stages {
@@ -65,7 +65,7 @@ pipeline {
                         error "No Java files with a main method were found after processing main_java_files.txt."
                     }
 
-                    def rootJarApps = ['AppMainRoot'] 
+                    def rootJarApps = ['AppMainRoot']
 
                     def dependencyJars = []
                     def workspacePath = env.WORKSPACE
@@ -125,16 +125,16 @@ pipeline {
 
                         if (srcMainJavaIdxInRelative != -1) {
                             packageStartIndexInFilePath = srcMainJavaIdxInRelative + "src/main/java/".length()
-                            srcDirForSourcepathRelative = relativeFilePathToWorkspace.substring(0, packageStartIndexInFilePath -1) 
+                            srcDirForSourcepathRelative = relativeFilePathToWorkspace.substring(0, packageStartIndexInFilePath -1)
                         } else if (srcIdxInRelative != -1) {
                             packageStartIndexInFilePath = srcIdxInRelative + "src/".length()
-                            srcDirForSourcepathRelative = relativeFilePathToWorkspace.substring(0, packageStartIndexInFilePath -1) 
-                        } else { 
+                            srcDirForSourcepathRelative = relativeFilePathToWorkspace.substring(0, packageStartIndexInFilePath -1)
+                        } else {
                             String currentPath = relativeFilePathToWorkspace.contains('/') ? relativeFilePathToWorkspace.substring(0, relativeFilePathToWorkspace.lastIndexOf('/')) : '.'
                             List<String> pathParts = currentPath.tokenize('/')
                             int lastPotentialPackagePartIndex = pathParts.size() -1
                             while(lastPotentialPackagePartIndex >= 0 && !pathParts[lastPotentialPackagePartIndex].isEmpty()) {
-                                if (pathParts[lastPotentialPackagePartIndex] ==~ /^[a-z_][a-z0-9_]*$/) { 
+                                if (pathParts[lastPotentialPackagePartIndex] ==~ /^[a-z_][a-z0-9_]*$/) {
                                      lastPotentialPackagePartIndex--
                                 } else {
                                     break
@@ -206,7 +206,7 @@ pipeline {
             steps {
                 script {
                     echo "--- Starting Unit Tests ---"
-                    def workspacePath = env.WORKSPACE.replace('\\', '/') 
+                    def workspacePath = env.WORKSPACE.replace('\\', '/')
                     def testClassesBaseDir = "${workspacePath}/${env.TEST_CLASSES_DIR_BASE}".replace('/', File.separator)
                     def testReportsBaseDir = "${workspacePath}/${env.TEST_REPORTS_DIR_BASE}".replace('/', File.separator)
 
@@ -214,9 +214,9 @@ pipeline {
                     bat "mkdir \"${testClassesBaseDir}\""
                     bat "if exist \"${testReportsBaseDir}\" rmdir /s /q \"${testReportsBaseDir}\""
                     bat "mkdir \"${testReportsBaseDir}\""
-                    
+
                     def psDebugFindTestRootsScript = """
-                        \$ErrorActionPreference = 'SilentlyContinue'; 
+                        \$ErrorActionPreference = 'SilentlyContinue';
                         \$baseSourcePath = "${workspacePath}/source"
                         Write-Host "DEBUG Jenkinsfile: Searching for test roots under: \$baseSourcePath"
 
@@ -238,11 +238,20 @@ pipeline {
                             Write-Host "DEBUG Jenkinsfile: No directories matched the pattern '[\\\\\\/]src[\\\\\\/]test[\\\\\\/]java\$' after filtering."
                             Set-Content -Path 'test_root_dirs.txt' -Value ''
                         }
+                        exit 0 # Explicitly exit with 0
                     """.stripIndent()
                     byte[] debugTestRootsScriptBytes = psDebugFindTestRootsScript.getBytes("UTF-16LE")
                     def encodedDebugTestRootsCommand = debugTestRootsScriptBytes.encodeBase64().toString()
+
                     echo "DEBUG Jenkinsfile: Executing PowerShell script to find test roots."
-                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedDebugTestRootsCommand}"
+                    try {
+                        bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedDebugTestRootsCommand}"
+                    } catch (e) {
+                        echo "ERROR: The 'bat' step for running the PowerShell script to find test roots failed!"
+                        echo "Exception: ${e.toString()}"
+                        error "PowerShell script execution via bat failed: ${e.getMessage()}"
+                    }
+                    echo "DEBUG Jenkinsfile: PowerShell script execution via bat (supposedly) completed."
 
                     def testRootDirsContent = readFile(file: 'test_root_dirs.txt', encoding: 'UTF-8').trim()
                     if (testRootDirsContent.isEmpty()) {
@@ -274,15 +283,15 @@ pipeline {
                             error "JUnit Platform Console Standalone JAR not found in libs directory ('${absoluteLibsDirPath}'). Cannot run tests."
                         }
 
-                        for (String testRootDirPath : testRootDirsPaths) { 
+                        for (String testRootDirPath : testRootDirsPaths) {
                             echo "\n--- Processing tests in module containing: ${testRootDirPath} ---"
 
-                            File testRootFileObj = new File(testRootDirPath) 
-                            File srcDirFileObj = testRootFileObj.getParentFile().getParentFile() 
-                            File appModuleDirFileObj = srcDirFileObj.getParentFile() 
+                            File testRootFileObj = new File(testRootDirPath)
+                            File srcDirFileObj = testRootFileObj.getParentFile().getParentFile()
+                            File appModuleDirFileObj = srcDirFileObj.getParentFile()
 
-                            String appNameForOutputs = appModuleDirFileObj.getName() 
-                            String derivedAppClassName = "" 
+                            String appNameForOutputs = appModuleDirFileObj.getName()
+                            String derivedAppClassName = ""
 
                             File mainJavaDir = new File(srcDirFileObj, "main/java")
                             if (mainJavaDir.exists() && mainJavaDir.isDirectory()) {
@@ -301,8 +310,8 @@ pipeline {
                             } else {
                                 echo "INFO: Found main class '${derivedAppClassName}' in ${mainJavaDir} for module ${appModuleDirFileObj.getName()}."
                             }
-                            
-                            appNameForOutputs = derivedAppClassName 
+
+                            appNameForOutputs = derivedAppClassName
                             echo "DEBUG: Module dir name: ${appModuleDirFileObj.getName()}, App Class Name for _classes dir: ${derivedAppClassName}"
                             def appClassOutputDir = "${workspacePath}/${env.OUTPUT_DIR}/${derivedAppClassName}_classes".replace('/', File.separator)
 
@@ -311,12 +320,12 @@ pipeline {
 
                             if (!new File(appClassOutputDir).exists()) {
                                 echo "ERROR: Application class output directory '${appClassOutputDir}' not found for module/app '${derivedAppClassName}'. Trying to find related _classes dir..."
-                                String searchPatternForClasses = appModuleDirFileObj.getName().toLowerCase() 
+                                String searchPatternForClasses = appModuleDirFileObj.getName().toLowerCase()
                                 def foundMatchingClassDir = ""
                                 new File("${workspacePath}/${env.OUTPUT_DIR}".replace('/', File.separator)).eachDirMatch(~/.*_classes/) { dir ->
                                     String classNameFromDir = dir.name.replace('_classes', '').toLowerCase()
                                     if (testRootDirPath.toLowerCase().contains(classNameFromDir) || classNameFromDir.contains(searchPatternForClasses) || appModuleDirFileObj.getName().toLowerCase().contains(classNameFromDir)) {
-                                        if (foundMatchingClassDir.isEmpty()) { 
+                                        if (foundMatchingClassDir.isEmpty()) {
                                             foundMatchingClassDir = dir.getAbsolutePath().replace('/', File.separator)
                                             echo "INFO: Found plausible related app class dir: ${foundMatchingClassDir}"
                                         } else {
@@ -378,7 +387,7 @@ pipeline {
                                 echo "Exception: ${e.toString()}"
                                 echo "Stderr/Stdout from bat might be in the build log above this message."
                                 echo "WARNING: Test compilation failed for ${appNameForOutputs}, continuing with next module if any."
-                                continue 
+                                continue
                             }
 
                             def testRuntimeClasspathList = [currentTestClassesDir] + testCompileClasspathList
@@ -395,8 +404,8 @@ pipeline {
                                 echo "Stderr/Stdout from bat might be in the build log above this message."
                                 echo "This might indicate a problem with the JUnit runner setup or classpath, not necessarily just test failures."
                             }
-                        } 
-                    } 
+                        }
+                    }
 
                     junit allowEmptyResults: true, testResults: "${env.TEST_REPORTS_DIR_BASE.replace('/', File.separator)}/**/*.xml"
                     echo "--- Finished Unit Tests ---"
@@ -415,7 +424,7 @@ pipeline {
                     def rootJarAppsList = ['AppMainRoot']
                     rootJarAppsList.each { appName ->
                         def jarFile = "${appName}.jar"
-                        if (fileExists(jarFile)) { 
+                        if (fileExists(jarFile)) {
                             bat "copy \"${jarFile}\" \"${RELEASE_PACKAGE_DIR}\\\""
                         } else {
                             echo "Warning: Root JAR ${jarFile} not found in workspace root."
