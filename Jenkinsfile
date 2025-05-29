@@ -207,68 +207,96 @@ pipeline {
                 script {
                     echo "--- Starting Unit Tests ---"
                     def workspacePath = env.WORKSPACE.replace('\\', '/')
-                    def workspacePathForPS = env.WORKSPACE.replace('/', '\\') // For PowerShell paths that need backslashes
+                    def workspacePathForPS = env.WORKSPACE.replace('/', '\\') 
                     def testClassesBaseDir = "${workspacePath}/${env.TEST_CLASSES_DIR_BASE}".replace('/', File.separator)
                     def testReportsBaseDir = "${workspacePath}/${env.TEST_REPORTS_DIR_BASE}".replace('/', File.separator)
-                    def psOutputFilePath = "${workspacePathForPS}\\test_root_dirs.txt" // Full Windows path for PowerShell output
+                    def psOutputFilePathGroovy = "${workspacePathForPS}\\test_root_dirs.txt" // Groovy variable with Windows path
 
                     bat "if exist \"${testClassesBaseDir}\" rmdir /s /q \"${testClassesBaseDir}\""
                     bat "mkdir \"${testClassesBaseDir}\""
                     bat "if exist \"${testReportsBaseDir}\" rmdir /s /q \"${testReportsBaseDir}\""
                     bat "mkdir \"${testReportsBaseDir}\""
 
-                    // Pre-delete the file to ensure a clean test
-                    String groovyPathForFileCheck = psOutputFilePath.replace('\\', '/')
+                    String groovyPathForFileCheck = psOutputFilePathGroovy.replace('\\', '/')
                     if (fileExists(groovyPathForFileCheck)) {
                         echo "INFO Jenkinsfile GROOVY: Pre-deleting existing '${groovyPathForFileCheck}'"
-                        try {
-                            bat "del /Q /F \"${psOutputFilePath}\""
-                        } catch (e) {
-                            echo "WARNING Jenkinsfile GROOVY: Could not pre-delete '${psOutputFilePath}'. It might not exist, which is fine. ${e.getMessage()}"
+                        try { bat "del /Q /F \"${psOutputFilePathGroovy}\"" } catch (e) { 
+                            echo "WARNING Jenkinsfile GROOVY: Could not pre-delete '${psOutputFilePathGroovy}'. ${e.getMessage()}"
                         }
                     }
 
-                    // SIMPLIFIED PowerShell script for debugging file creation
+                    // Using the SIMPLIFIED PowerShell script for debugging file creation
                     def psSimplifiedScript = """
-                        \$ErrorActionPreference = 'Stop'; # Make errors terminating
-                        \$outputFilePathFromPS = @"
-${psOutputFilePath}
-"@.Trim() # Pass the full path from Groovy
+                        \$ErrorActionPreference = 'Stop'; 
+                        \$outputFilePathInPS = '${psOutputFilePathGroovy.replace('\\', '\\\\')}'
 
                         Write-Host "DEBUG PS: This is PowerShell speaking."
-                        Write-Host "DEBUG PS: Will attempt to write to: '\$outputFilePathFromPS'"
+                        Write-Host "DEBUG PS: Will attempt to write to: '\$outputFilePathInPS'"
                         
                         \$markerContent = "PowerShell_was_here_and_created_this_file_successfully_$(Get-Date)"
                         
                         try {
-                            \$markerContent | Out-File -FilePath \$outputFilePathFromPS -Encoding utf8NoBOM -Force
-                            Write-Host "DEBUG PS: Out-File command executed for '\$outputFilePathFromPS'."
-                            if (Test-Path -Path \$outputFilePathFromPS -PathType Leaf) {
-                                Write-Host "DEBUG PS: SUCCESS - Test-Path confirms '\$outputFilePathFromPS' EXISTS after Out-File."
-                                \$fileContent = Get-Content -Path \$outputFilePathFromPS -Raw
+                            Set-Content -Path "\$outputFilePathInPS" -Value \$markerContent -Encoding utf8NoBOM -Force 
+                            Write-Host "DEBUG PS: Set-Content command executed for '\$outputFilePathInPS'."
+                            if (Test-Path -Path "\$outputFilePathInPS" -PathType Leaf) {
+                                Write-Host "DEBUG PS: SUCCESS - Test-Path confirms '\$outputFilePathInPS' EXISTS after Set-Content."
+                                \$fileContent = Get-Content -Path "\$outputFilePathInPS" -Raw
                                 Write-Host "DEBUG PS CONTENT: \$fileContent"
                             } else {
-                                Write-Host "DEBUG PS ERROR: FAILURE - Test-Path confirms '\$outputFilePathFromPS' DOES NOT EXIST or is not a file after Out-File."
-                                exit 1 # Explicitly exit with error if Test-Path fails
+                                Write-Host "DEBUG PS ERROR: FAILURE - Test-Path confirms '\$outputFilePathInPS' DOES NOT EXIST or is not a file after Set-Content."
+                                exit 1 
                             }
                         } catch {
-                            Write-Host "DEBUG PS ERROR: Exception during Out-File or Test-Path: \$(\$_.Exception.ToString())"
-                            exit 1 # Explicitly exit with error
+                            Write-Host "DEBUG PS ERROR: Exception during Set-Content or Test-Path: \$(\$_.Exception.ToString())"
+                            exit 1 
                         }
-                        exit 0 # Success
+                        exit 0 
                     """.stripIndent()
+                    
+                    // This is the original complex script to find actual test roots.
+                    // Keep it commented out until the simplified script above works for file creation.
+                    /*
+                    def psComplexFindTestRootsScript = ""\"
+                        \$ErrorActionPreference = 'SilentlyContinue'; // Can be 'Stop' for harder failure
+                        \$baseSourcePath = "${workspacePath}/source"
+                        // Use the Groovy variable directly in PS, ensuring paths are PS-friendly
+                        \$outputFilePathInPS = '${psOutputFilePathGroovy.replace('\\', '\\\\')}'
 
+                        Write-Host "DEBUG Jenkinsfile PS: Searching for test roots under: \$baseSourcePath"
+                        Write-Host "DEBUG Jenkinsfile PS: PowerShell will write output to: \$outputFilePathInPS"
+
+                        \$allJavaDirs = Get-ChildItem -Path \$baseSourcePath -Recurse -Directory -Filter "java" | ForEach-Object { \$_.FullName }
+                        if (\$null -ne \$allJavaDirs -and \$allJavaDirs.Count -gt 0) {
+                            Write-Host "DEBUG Jenkinsfile PS: Found directories named 'java' under '\$baseSourcePath':"
+                            \$allJavaDirs | ForEach-Object { Write-Host ("  JENKINS_JAVA_DIR_FOUND: " + \$_) }
+                        } else {
+                            Write-Host "DEBUG Jenkinsfile PS: No directories named 'java' found under '\$baseSourcePath'."
+                        }
+
+                        \$testRootDirs = \$allJavaDirs | Where-Object { \$_ -match '[\\\\\\/]src[\\\\\\/]test[\\\\\\/]java\$' }
+
+                        if (\$null -ne \$testRootDirs -and \$testRootDirs.Count -gt 0) {
+                            Write-Host "DEBUG Jenkinsfile PS: Filtered test root directories (matching 'src/test/java' pattern):"
+                            \$testRootDirs | ForEach-Object { Write-Host ("  JENKINS_TEST_ROOT_MATCHED: " + \$_) }
+                            \$testRootDirs | Out-File -FilePath \$outputFilePathInPS -Encoding utf8NoBOM -Force
+                        } else {
+                            Write-Host "DEBUG Jenkinsfile PS: No directories matched the pattern '[\\\\\\/]src[\\\\\\/]test[\\\\\\/]java\$' after filtering."
+                            Set-Content -Path \$outputFilePathInPS -Value '' -Force
+                        }
+                        exit 0 
+                    ""\".stripIndent()
+                    */
+                    
+                    // Determine which PowerShell script to run (simplified for now)
                     byte[] psScriptBytesToRun = psSimplifiedScript.getBytes("UTF-16LE")
                     def encodedPsCommandToRun = psScriptBytesToRun.encodeBase64().toString()
 
-                    echo "DEBUG Jenkinsfile GROOVY: Executing SIMPLIFIED PowerShell script."
+                    echo "DEBUG Jenkinsfile GROOVY: Executing PowerShell script."
                     try {
                         bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommandToRun}"
                     } catch (e) {
                         echo "ERROR Jenkinsfile GROOVY: The 'bat' step for running the PowerShell script FAILED!"
                         echo "Exception: ${e.toString()}"
-                        // This error means the bat command itself returned non-zero,
-                        // which should happen if PowerShell's 'exit 1' was triggered.
                         error "PowerShell script execution via bat failed: ${e.getMessage()}"
                     }
                     echo "DEBUG Jenkinsfile GROOVY: PowerShell script execution via bat (supposedly) completed."
@@ -280,12 +308,9 @@ ${psOutputFilePath}
                         echo "CONTENT Jenkinsfile GROOVY: Read from file: '${fileContentFromGroovy}'"
                         if (fileContentFromGroovy.contains("PowerShell_was_here")) {
                             echo "SUCCESS Jenkinsfile GROOVY: Marker content found in file!"
-                            // At this point, file creation and visibility are confirmed.
-                            // You would now switch back to the *original complex PowerShell script*
-                            // that actually finds test root directories.
-                            echo "INFO: File creation debug successful. For actual test run, revert to complex PowerShell script."
-                            // For now, we'll treat this as a successful test of file IO.
-                            // The actual 'testRootDirsContent' for further processing would be from the complex script.
+                            echo "INFO: File creation debug successful. To run actual tests, use the complex PowerShell script and uncomment the main test loop."
+                            // For this debug, we stop further processing.
+                            // In a real run with the complex script, testRootDirsContentActual would be used.
                         } else {
                             error "Marker content not found in '${groovyPathForFileCheck}'. Content: '${fileContentFromGroovy}'"
                         }
@@ -294,7 +319,8 @@ ${psOutputFilePath}
                         sleep 2 
                         if (fileExists(groovyPathForFileCheck)) {
                             echo "SUCCESS Jenkinsfile GROOVY: File '${groovyPathForFileCheck}' exists after 2s delay."
-                            // If it appears after a delay, it's a file system sync issue.
+                            def fileContentFromGroovy = readFile(file: groovyPathForFileCheck, encoding: 'UTF-8').trim()
+                            echo "CONTENT Jenkinsfile GROOVY (after delay): Read from file: '${fileContentFromGroovy}'"
                         } else {
                             echo "FAILURE Jenkinsfile GROOVY: File '${groovyPathForFileCheck}' STILL DOES NOT exist after 2s delay."
                             echo "Listing workspace contents after PS script:"
@@ -303,30 +329,17 @@ ${psOutputFilePath}
                         }
                     }
 
-                    // --- IMPORTANT ---
-                    // The rest of this 'Unit Tests' stage assumes 'test_root_dirs.txt' contains
-                    // actual paths to test roots. Since the simplified PS script above only writes
-                    // a marker, the following loop WILL NOT function as intended for running real tests
-                    // until you revert the PowerShell script to the one that finds test roots.
-                    // For this debugging iteration, we primarily care if `readFile` above succeeds.
-                    //
-                    // If 'readFile' succeeded with the marker, comment out the simplified PS script,
-                    // and uncomment/use the original complex one that outputs paths.
-                    def testRootDirsContentActual = readFile(file: groovyPathForFileCheck, encoding: 'UTF-8').trim()
-                    if (testRootDirsContentActual.isEmpty() || !testRootDirsContentActual.contains("C:\\")) { // Crude check if it's not paths
+                    // Placeholder for original test processing logic (currently bypassed by simplified PS script)
+                    def testRootDirsContentActual = readFile(file: groovyPathForFileCheck, encoding: 'UTF-8').trim() // Re-read in case of delay
+                    if (testRootDirsContentActual.isEmpty() || !testRootDirsContentActual.contains("C:\\")) { 
                         echo "INFO: Content of '${groovyPathForFileCheck}' is marker or empty. Skipping actual test processing loop for this debug iteration."
                     } else {
-                        def testRootDirsPaths = testRootDirsContentActual.split("\\r?\\n").collect { it.trim().replace('\\', '/') }.findAll { it }
-                        echo "Processing actual test root directories: ${testRootDirsPaths}"
-                        // ... (Insert the full 'for' loop from the previous Jenkinsfile here to process actual tests)
-                        // This loop would start with:
-                        // def absoluteLibsDirPath = "${workspacePath}/${env.LIBS_DIR_PATH}".replace('/', File.separator)
-                        // ... and contain the compilation and execution logic per test root.
-                        // For brevity in this debugging step, it's omitted but understood to be re-inserted
-                        // once the file creation issue is resolved and the PowerShell script is reverted.
+                        // This block would contain the full 'for' loop to process actual test roots
+                        // if the psComplexFindTestRootsScript was used and successful.
                         echo "PLACEHOLDER: Actual test processing loop would run here if PowerShell script wrote paths."
+                        // def testRootDirsPaths = testRootDirsContentActual.split("\\r?\\n").collect { it.trim().replace('\\', '/') }.findAll { it }
+                        // for (String testRootDirPath : testRootDirsPaths) { ... }
                     }
-
 
                     junit allowEmptyResults: true, testResults: "${env.TEST_REPORTS_DIR_BASE.replace('/', File.separator)}/**/*.xml"
                     echo "--- Finished Unit Tests ---"
@@ -338,9 +351,7 @@ ${psOutputFilePath}
             steps {
                 bat "if exist \"${RELEASE_PACKAGE_DIR}\" rmdir /s /q \"${RELEASE_PACKAGE_DIR}\""
                 bat "mkdir \"${RELEASE_PACKAGE_DIR}\""
-
                 bat "xcopy \"${OUTPUT_DIR}\\*.jar\" \"${RELEASE_PACKAGE_DIR}\\\" /Y /I > nul 2>&1 || echo No JARs in ${OUTPUT_DIR} to copy."
-
                 script {
                     def rootJarAppsList = ['AppMainRoot']
                     rootJarAppsList.each { appName ->
@@ -361,11 +372,8 @@ ${psOutputFilePath}
                     def tag = "build-${env.BUILD_NUMBER}"
                     def message = "Automated build ${env.BUILD_NUMBER}"
                     def zipFile = "${RELEASE_PACKAGE_DIR}.zip"
-
                     bat "powershell Compress-Archive -Path \"${RELEASE_PACKAGE_DIR}\\*\" -DestinationPath \"${zipFile}\" -Force"
-
                     String releaseData = "{ \\\"tag_name\\\": \\\"${tag}\\\", \\\"name\\\": \\\"${tag}\\\", \\\"body\\\": \\\"${message}\\\", \\\"draft\\\": false, \\\"prerelease\\\": false }"
-
                     withCredentials([string(credentialsId: "${GITHUB_CREDS}", variable: 'GH_TOKEN')]) {
                         bat """
                             curl -L -X POST ^
