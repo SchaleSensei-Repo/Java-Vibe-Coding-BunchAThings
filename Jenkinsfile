@@ -255,7 +255,7 @@ pipeline {
                     
                     // Original complex script (commented out for this debug run)
                     /*
-                    def psComplexFindTestRootsScript = ""\"
+                    def psComplexFindTestRootsScript = ""\" 
                         \$ErrorActionPreference = 'SilentlyContinue'; 
                         \$baseSourcePath = "${workspacePath}/source"
                         \$outputFilePathInPS = "${psOutputFilePathGroovy.replace('\\', '\\\\')}" // Corrected Interpolation
@@ -324,8 +324,7 @@ pipeline {
                         }
                     }
                     
-                    // This part is for when you revert to the complex PowerShell script
-                    def testRootDirsContentActual = readFile(file: groovyPathForFileCheck, encoding: 'UTF-8').trim()
+                    def testRootDirsContentActual = readFile(file: groovyPathForFileCheck, encoding: 'UTF-8').trim() 
                     if (testRootDirsContentActual.isEmpty() || !testRootDirsContentActual.contains("C:\\")) { 
                         echo "INFO: Content of '${groovyPathForFileCheck}' is marker or empty. Skipping actual test processing loop for this debug iteration."
                     } else {
@@ -443,8 +442,8 @@ pipeline {
                             try { bat runTestsCommandModule } catch (e) {
                                 echo "ERROR during test execution for ${appNameForOutputs}. Command: ${runTestsCommandModule}. Exception: ${e.toString()}"
                             }
-                        } // End for loop
-                    } // End else (testRootDirsContentActual is not marker)
+                        } 
+                    } 
 
                     junit allowEmptyResults: true, testResults: "${env.TEST_REPORTS_DIR_BASE.replace('/', File.separator)}/**/*.xml"
                     echo "--- Finished Unit Tests ---"
