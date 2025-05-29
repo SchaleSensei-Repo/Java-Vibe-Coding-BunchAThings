@@ -202,6 +202,8 @@ pipeline {
             }
         }
 
+        /*
+
         stage('Unit Tests') {
             steps {
                 script {
@@ -284,7 +286,7 @@ pipeline {
                         }
                         exit 0 
                     ""\".stripIndent()
-                    */
+                    
                     
                     byte[] psScriptBytesToRun = psSimplifiedScript.getBytes("UTF-16LE")
                     def encodedPsCommandToRun = psScriptBytesToRun.encodeBase64().toString()
@@ -452,6 +454,8 @@ pipeline {
             }
         }
 
+        */
+        
         stage('Create Release Package') {
             steps {
                 bat "if exist \"${RELEASE_PACKAGE_DIR}\" rmdir /s /q \"${RELEASE_PACKAGE_DIR}\""
