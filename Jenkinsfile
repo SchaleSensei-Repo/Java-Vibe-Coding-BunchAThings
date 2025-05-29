@@ -1,5 +1,3 @@
---- START OF FILE Jenkinsfile.txt ---
-
 pipeline {
     agent any
 
