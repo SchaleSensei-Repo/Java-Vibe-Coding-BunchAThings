@@ -45,30 +45,20 @@ pipeline {
                         echo "Found ${libUrls.size()} URL(s) to process from ${libsFile}."
                         libUrls.each { url ->
                             try {
-                                // Extract filename from URL using string manipulation
                                 def fileName = url.substring(url.lastIndexOf('/') + 1)
-                                
                                 if (!fileName || fileName.isEmpty()) {
                                     echo "WARNING: Could not extract a valid filename (empty after substring) from URL: ${url}. Skipping."
-                                    return // continue to next URL in Groovy .each
+                                    return 
                                 }
-                                
                                 int queryIndex = fileName.indexOf('?')
-                                if (queryIndex != -1) {
-                                    fileName = fileName.substring(0, queryIndex)
-                                }
+                                if (queryIndex != -1) { fileName = fileName.substring(0, queryIndex) }
                                 int fragmentIndex = fileName.indexOf('#')
-                                if (fragmentIndex != -1) {
-                                    fileName = fileName.substring(0, fragmentIndex)
-                                }
-
+                                if (fragmentIndex != -1) { fileName = fileName.substring(0, fragmentIndex) }
                                 if (!fileName || fileName.isEmpty()) { 
                                     echo "WARNING: Could not extract a valid filename (empty after cleaning) from URL: ${url}. Skipping."
                                     return 
                                 }
-
                                 def destPath = "${libsDirPath}\\${fileName}".replace('/', '\\')
-                                
                                 echo "Downloading ${url} to ${destPath}"
                                 bat "powershell -NoProfile -NonInteractive -Command \"Invoke-WebRequest -Uri '${url}' -OutFile '${destPath}' -UseBasicParsing\""
                                 echo "Successfully downloaded ${fileName}"
@@ -125,7 +115,6 @@ pipeline {
                     }
 
                     def rootJarApps = ['AppMainRoot']
-
                     def dependencyJars = []
                     def workspacePath = env.WORKSPACE
                     def absoluteLibsDirPath = "${workspacePath}\\${env.LIBS_DIR_PATH}".replace('/', File.separator)
@@ -177,10 +166,8 @@ pipeline {
                         int srcMainJavaIdxInRelative = -1
                         int srcIdxInRelative = -1
                         int packageStartIndexInFilePath = -1
-
                         String workspacePrefix = env.WORKSPACE.replace('\\', '/') + "/"
                         String relativeFilePathToWorkspace = groovyFilePath.startsWith(workspacePrefix) ? groovyFilePath.substring(workspacePrefix.length()) : groovyFilePath
-
                         srcMainJavaIdxInRelative = relativeFilePathToWorkspace.lastIndexOf("src/main/java/")
                         srcIdxInRelative = relativeFilePathToWorkspace.lastIndexOf("src/")
 
@@ -215,13 +202,10 @@ pipeline {
                         if (packageStartIndexInFilePath != -1 && relativeFilePathToWorkspace.lastIndexOf('/') > packageStartIndexInFilePath) {
                             packageSubPath = relativeFilePathToWorkspace.substring(packageStartIndexInFilePath, relativeFilePathToWorkspace.lastIndexOf('/'))
                         }
-
                         if (!packageSubPath.isEmpty()) {
                             fqcn = packageSubPath.replace('/', '.') + "." + classNameOnly
                         }
-
                         def appClassOutputDirRelative = "${OUTPUT_DIR}/${classNameOnly}_classes".replace('/', '\\')
-
                         bat "if exist \"${appClassOutputDirRelative}\" rmdir /s /q \"${appClassOutputDirRelative}\""
                         bat "mkdir \"${appClassOutputDirRelative}\""
 
@@ -230,7 +214,6 @@ pipeline {
                             def jarPathRelative = rootJarApps.contains(classNameOnly)
                                 ? jarName.replace('/', '\\')
                                 : "${OUTPUT_DIR}\\${jarName}".replace('/', '\\')
-
                             echo "--- Processing App: ${classNameOnly} ---"
                             echo "  Source File: ${fullFilePath}"
                             echo "  FQCN: ${fqcn}"
@@ -240,23 +223,18 @@ pipeline {
                             if (!commonClassPath.isEmpty()) {
                                 echo "  Compiler Classpath: ${commonClassPath}"
                             }
-
                             String batFullFilePath = fullFilePath.replace('/', '\\')
                             String batSrcDirForSourcepathCmd = srcDirForSourcepathRelative.replace('/', '\\')
-
                             def compileCommand = "javac -encoding UTF-8 ${classPathOpt} -d \"${appClassOutputDirRelative}\" -sourcepath \"${batSrcDirForSourcepathCmd}\" \"${batFullFilePath}\""
                             echo "  Compile CMD: ${compileCommand}"
                             bat compileCommand
-
                             def jarCommand = "jar cfe \"${jarPathRelative}\" ${fqcn} -C \"${appClassOutputDirRelative}\" ."
                             echo "  JAR CMD: ${jarCommand}"
                             bat jarCommand
                             echo "--- Finished App: ${classNameOnly} ---"
                         }]
                     }
-
                     parallel builds
-
                     def end = System.currentTimeMillis()
                     echo "✅ Build Apps stage completed in ${(end - start) / 1000}s"
                 }
@@ -269,16 +247,13 @@ pipeline {
                 bat "mkdir \"${RELEASE_PACKAGE_DIR}\""
                 bat "xcopy \"${OUTPUT_DIR}\\*.jar\" \"${RELEASE_PACKAGE_DIR}\\\" /Y /I > nul 2>&1 || echo No JARs in ${OUTPUT_DIR} to copy."
                 script {
-                    def rootJarAppsList = ['AppMainRoot'] // Example, adjust as needed
+                    def rootJarAppsList = ['AppMainRoot']
                     rootJarAppsList.each { appName ->
                         def jarFile = "${appName}.jar"
-                        // Check if root JAR exists in workspace root (where it might be built by specific logic)
                         if (fileExists(jarFile)) {
                              echo "Copying root JAR ${jarFile} to ${RELEASE_PACKAGE_DIR}"
                             bat "copy \"${jarFile}\" \"${RELEASE_PACKAGE_DIR}\\\""
                         } 
-                        // Also check if it exists in OUTPUT_DIR (if it's a standard build output not copied by xcopy yet)
-                        // This part might be redundant if xcopy handles it, but can be a fallback.
                         else if (fileExists("${OUTPUT_DIR}/${jarFile}")) {
                             echo "Copying root JAR ${OUTPUT_DIR}/${jarFile} to ${RELEASE_PACKAGE_DIR}"
                             bat "copy \"${OUTPUT_DIR}\\${jarFile}\" \"${RELEASE_PACKAGE_DIR}\\\""
@@ -297,34 +272,32 @@ pipeline {
                     def tag = "build-${env.BUILD_NUMBER}"
                     def message = "Automated build ${env.BUILD_NUMBER}"
                     def zipFileName = "${RELEASE_PACKAGE_DIR}.zip"
-                    // Ensure zipFilePath uses backslashes for PowerShell and is absolute
                     def zipFilePath = "${env.WORKSPACE}\\${zipFileName}".replace('/', '\\') 
 
                     echo "Creating archive: ${zipFilePath} from directory ${RELEASE_PACKAGE_DIR}"
-                    // Ensure the source path for Compress-Archive is correctly formatted for PowerShell
                     def releasePackagePathForPS = "${env.WORKSPACE}\\${RELEASE_PACKAGE_DIR}".replace('/', '\\')
-                    bat "powershell Compress-Archive -Path \"${releasePackagePathForPS}\\*\" -DestinationPath \"${zipFilePath}\" -Force"
+                    // Using -Command for Compress-Archive for simplicity here, assuming paths are simple
+                    bat "powershell -NoProfile -NonInteractive Compress-Archive -Path \"${releasePackagePathForPS}\\*\" -DestinationPath \"${zipFilePath}\" -Force"
 
                     if (!fileExists(zipFilePath)) {
                         error "Failed to create release ZIP file: ${zipFilePath}"
                     }
 
-                    // Escape special characters in JSON for PowerShell command line
                     String releaseData = "{ \\\"tag_name\\\": \\\"${tag}\\\", \\\"name\\\": \\\"${tag}\\\", \\\"body\\\": \\\"${message}\\\", \\\"draft\\\": false, \\\"prerelease\\\": false }"
                     
                     withCredentials([string(credentialsId: "${GITHUB_CREDS}", variable: 'GH_TOKEN')]) {
-                        // PowerShell script to create release and upload asset
-                        def psScript = """
+                        def psPublishScriptContent = """
                             \$ErrorActionPreference = 'Stop'
-                            \$ProgressPreference = 'SilentlyContinue' // Suppress progress bars for cleaner logs
+                            \$ProgressPreference = 'SilentlyContinue'
 
-                            \$ghToken = "${GH_TOKEN}" // Injected by withCredentials
+                            \$ghToken = "${GH_TOKEN}" 
                             \$repo = "${GITHUB_REPO}"
-                            \$releaseDataJson = '${releaseData.replace("\"", "\\\"")}' // Escape quotes for PS string
-                            \$zipFilePathForPS = "${zipFilePath.replace('\\', '\\\\')}" // Double escape backslashes for PS string
+                            \$releaseDataJson = '${releaseData.replace("'", "''")}' 
+                            \$zipFilePathForPS = @"
+${zipFilePath.replace('\\', '\\\\')}
+"@.Trim() # Using PS Here-String for path
                             \$zipFileNameForPS = "${zipFileName}"
 
-                            Write-Host "DEBUG: GH Token Length: \$(\$ghToken.Length)"
                             Write-Host "DEBUG: Repo: \$repo"
                             Write-Host "DEBUG: Release Data JSON for PS: \$releaseDataJson"
                             Write-Host "DEBUG: Zip File Path for PS: \$zipFilePathForPS"
@@ -354,23 +327,20 @@ pipeline {
                             }
                             Write-Host ("Raw Upload URL with placeholder: " + \$uploadUrlWithPlaceholder)
 
-                            # Correctly parse the upload URL (remove template part)
                             \$uploadUrlBase = \$uploadUrlWithPlaceholder.Substring(0, \$uploadUrlWithPlaceholder.IndexOf('{'))
                             \$finalUploadUrl = \$uploadUrlBase + "?name=" + [System.Uri]::EscapeDataString(\$zipFileNameForPS)
                             Write-Host ("Formatted Upload URL for \$zipFileNameForPS: " + \$finalUploadUrl)
 
                             Write-Host "Uploading asset: \$zipFilePathForPS to \$finalUploadUrl"
                             
-                            # Use a different set of headers for upload, especially Content-Type
                             \$uploadHeaders = @{
                                 "Authorization"        = "Bearer \$ghToken"
                                 "X-GitHub-Api-Version" = "2022-11-28"
-                                # Content-Type for asset upload is typically application/octet-stream or specific like application/zip
                                 "Content-Type"         = "application/zip" 
                             }
 
                             try {
-                                Invoke-RestMethod -Uri \$finalUploadUrl -Method Post -Headers \$uploadHeaders -InFile \$zipFilePathForPS 
+                                Invoke-RestMethod -Uri \$finalUploadUrl -Method Post -Headers \$uploadHeaders -InFile \$zipFilePathForPS
                                 Write-Host "Successfully uploaded \$zipFileNameForPS to release ${tag}."
                             } catch {
                                 Write-Error "Failed to upload asset: \$(\$_.Exception.Message)"
@@ -380,11 +350,10 @@ pipeline {
                             }
                         """.stripIndent()
 
-                        // Execute the entire PowerShell script
-                        // Ensure quotes within psScript are handled correctly when passed to bat
-                        // One way is to replace all double quotes in psScript with triple double quotes for bat
-                        def escapedPsScript = psScript.replace('"', '"""') 
-                        bat script: "powershell -NoProfile -NonInteractive -Command \"${escapedPsScript}\""
+                        byte[] scriptBytesUTF16LE = psPublishScriptContent.getBytes("UTF-16LE") 
+                        def encodedCommand = scriptBytesUTF16LE.encodeBase64().toString()
+                        
+                        bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
                     }
                 }
             }
