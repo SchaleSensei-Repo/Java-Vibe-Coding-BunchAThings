@@ -233,7 +233,7 @@ pipeline {
                         Write-Host "DEBUG PS: This is PowerShell speaking."
                         Write-Host "DEBUG PS: Will attempt to write to: '\$outputFilePathInPS'"
                         
-                        \$markerContent = "PowerShell_was_here_and_created_this_file_successfully_$(Get-Date)"
+                        \$markerContent = "PowerShell_was_here_and_created_this_file_successfully_\$(Get-Date)" // FIXED: Escaped $(Get-Date) for Groovy
                         
                         try {
                             Set-Content -Path "\$outputFilePathInPS" -Value \$markerContent -Encoding utf8NoBOM -Force 
