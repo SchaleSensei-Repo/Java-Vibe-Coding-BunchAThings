@@ -215,13 +215,11 @@ pipeline {
                     bat "if exist \"${testReportsBaseDir}\" rmdir /s /q \"${testReportsBaseDir}\""
                     bat "mkdir \"${testReportsBaseDir}\""
                     
-                    // DEBUGGING PowerShell Script to find test roots
                     def psDebugFindTestRootsScript = """
                         \$ErrorActionPreference = 'SilentlyContinue'; 
                         \$baseSourcePath = "${workspacePath}/source"
                         Write-Host "DEBUG Jenkinsfile: Searching for test roots under: \$baseSourcePath"
 
-                        # Step 1: Get all directories named 'java' recursively
                         \$allJavaDirs = Get-ChildItem -Path \$baseSourcePath -Recurse -Directory -Filter "java" | ForEach-Object { \$_.FullName }
                         if (\$null -ne \$allJavaDirs -and \$allJavaDirs.Count -gt 0) {
                             Write-Host "DEBUG Jenkinsfile: Found directories named 'java' under '\$baseSourcePath':"
@@ -230,9 +228,7 @@ pipeline {
                             Write-Host "DEBUG Jenkinsfile: No directories named 'java' found under '\$baseSourcePath'."
                         }
 
-                        # Step 2: Apply the filter for paths ending in src/test/java or src\\test\\java
                         \$testRootDirs = \$allJavaDirs | Where-Object { \$_ -match '[\\\\\\/]src[\\\\\\/]test[\\\\\\/]java\$' }
-
 
                         if (\$null -ne \$testRootDirs -and \$testRootDirs.Count -gt 0) {
                             Write-Host "DEBUG Jenkinsfile: Filtered test root directories (matching 'src/test/java' pattern):"
@@ -247,7 +243,6 @@ pipeline {
                     def encodedDebugTestRootsCommand = debugTestRootsScriptBytes.encodeBase64().toString()
                     echo "DEBUG Jenkinsfile: Executing PowerShell script to find test roots."
                     bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedDebugTestRootsCommand}"
-                    // End DEBUGGING PowerShell Script
 
                     def testRootDirsContent = readFile(file: 'test_root_dirs.txt', encoding: 'UTF-8').trim()
                     if (testRootDirsContent.isEmpty()) {
@@ -378,7 +373,12 @@ pipeline {
                             try {
                                 bat testCompileCommand
                             } catch (e) {
-                                echo "WARNING: Test compilation failed for ${appNameForOutputs}. ${e.getMessage()}"
+                                echo "ERROR during test compilation for ${appNameForOutputs}."
+                                echo "Command was: ${testCompileCommand}"
+                                echo "Exception: ${e.toString()}"
+                                echo "Stderr/Stdout from bat might be in the build log above this message."
+                                echo "WARNING: Test compilation failed for ${appNameForOutputs}, continuing with next module if any."
+                                continue 
                             }
 
                             def testRuntimeClasspathList = [currentTestClassesDir] + testCompileClasspathList
@@ -389,7 +389,11 @@ pipeline {
                             try {
                                 bat runTestsCommand
                             } catch (e) {
-                                echo "JUnit Console Launcher for ${appNameForOutputs} finished. Non-zero exit code likely indicates test failures."
+                                echo "ERROR during test execution for ${appNameForOutputs} (bat command itself failed)."
+                                echo "Command was: ${runTestsCommand}"
+                                echo "Exception: ${e.toString()}"
+                                echo "Stderr/Stdout from bat might be in the build log above this message."
+                                echo "This might indicate a problem with the JUnit runner setup or classpath, not necessarily just test failures."
                             }
                         } 
                     } 
