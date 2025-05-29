@@ -228,7 +228,8 @@ pipeline {
                     // SIMPLIFIED PowerShell script for debugging file creation
                     def psSimplifiedScript = """
                         \$ErrorActionPreference = 'Stop'; 
-                        \$outputFilePathInPS = "${psOutputFilePathGroovy.replace('\\', '\\\\')}" // Corrected Interpolation
+                        \$outputFilePathInPS = "${psOutputFilePathGroovy.replace('\\', '\\\\')}"
+                        # Corrected Interpolation
 
                         Write-Host "DEBUG PS: This is PowerShell speaking."
                         Write-Host "DEBUG PS: Will attempt to write to: '\$outputFilePathInPS'"
