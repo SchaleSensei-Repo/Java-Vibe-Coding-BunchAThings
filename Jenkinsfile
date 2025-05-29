@@ -266,7 +266,7 @@ pipeline {
             }
         }
 
-        stage('Publish Release') {
+                stage('Publish Release') {
             steps {
                 script {
                     def tag = "build-${env.BUILD_NUMBER}"
@@ -276,7 +276,6 @@ pipeline {
 
                     echo "Creating archive: ${zipFilePath} from directory ${RELEASE_PACKAGE_DIR}"
                     def releasePackagePathForPS = "${env.WORKSPACE}\\${RELEASE_PACKAGE_DIR}".replace('/', '\\')
-                    // Using -Command for Compress-Archive for simplicity here, assuming paths are simple
                     bat "powershell -NoProfile -NonInteractive Compress-Archive -Path \"${releasePackagePathForPS}\\*\" -DestinationPath \"${zipFilePath}\" -Force"
 
                     if (!fileExists(zipFilePath)) {
@@ -295,7 +294,7 @@ pipeline {
                             \$releaseDataJson = '${releaseData.replace("'", "''")}' 
                             \$zipFilePathForPS = @"
 ${zipFilePath.replace('\\', '\\\\')}
-"@.Trim() # Using PS Here-String for path
+"@.Trim()
                             \$zipFileNameForPS = "${zipFileName}"
 
                             Write-Host "DEBUG: Repo: \$repo"
@@ -329,7 +328,9 @@ ${zipFilePath.replace('\\', '\\\\')}
 
                             \$uploadUrlBase = \$uploadUrlWithPlaceholder.Substring(0, \$uploadUrlWithPlaceholder.IndexOf('{'))
                             \$finalUploadUrl = \$uploadUrlBase + "?name=" + [System.Uri]::EscapeDataString(\$zipFileNameForPS)
-                            Write-Host ("Formatted Upload URL for \$zipFileNameForPS: " + \$finalUploadUrl)
+                            
+                            # Corrected Line:
+                            Write-Host ("Formatted Upload URL for \${zipFileNameForPS}: " + \$finalUploadUrl) 
 
                             Write-Host "Uploading asset: \$zipFilePathForPS to \$finalUploadUrl"
                             
