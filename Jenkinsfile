@@ -1,3 +1,5 @@
+--- START OF FILE Jenkinsfile.txt ---
+
 pipeline {
     agent any
 
@@ -12,7 +14,7 @@ pipeline {
         GITHUB_CREDS = 'GITHUB_PAT'
         RELEASES_TO_KEEP = 3
         EMAIL_RECIPIENTS = 'ashlovedawn@gmail.com'
-        LIBS_DIR_PATH = 'libs'
+        LIBS_DIR_PATH = 'libs' // Dependencies will be downloaded here
         TEST_CLASSES_DIR_BASE = 'out/test-classes'
         TEST_REPORTS_DIR_BASE = 'out/test-reports'
     }
@@ -25,15 +27,67 @@ pipeline {
             }
         }
 
+        stage('Download Dependencies') {
+            steps {
+                script {
+                    echo "--- Starting Dependency Download ---"
+                    def libsFile = 'libs.txt'
+                    if (!fileExists(libsFile)) {
+                        error "Dependency list file '${libsFile}' not found in workspace."
+                    }
+
+                    // Read URLs from libs.txt, filter out empty/whitespace lines
+                    def libUrls = readFile(libsFile).readLines().collect { it.trim() }.findAll { it }
+
+                    if (libUrls.isEmpty()) {
+                        echo "No URLs found in ${libsFile} or all lines were empty. Skipping download."
+                    } else {
+                        // Ensure LIBS_DIR_PATH directory exists
+                        def libsDirPath = env.LIBS_DIR_PATH
+                        bat "if not exist \"${libsDirPath}\" mkdir \"${libsDirPath}\""
+                        
+                        echo "Found ${libUrls.size()} URL(s) to process from ${libsFile}."
+                        libUrls.each { url ->
+                            try {
+                                // Extract filename from URL
+                                def uri = new URI(url)
+                                def path = uri.getPath()
+                                def fileName = path.substring(path.lastIndexOf('/') + 1)
+                                
+                                if (!fileName || fileName.isEmpty()) {
+                                    echo "WARNING: Could not extract a valid filename from URL: ${url}. Skipping."
+                                    return // continue to next URL in Groovy .each
+                                }
+
+                                def destPath = "${libsDirPath}\\${fileName}".replace('/', '\\') // Ensure backslashes for bat commands
+                                
+                                echo "Downloading ${url} to ${destPath}"
+                                // Using PowerShell for robust downloads (handles redirects, HTTPS well)
+                                // -UseBasicParsing can help avoid issues with IE engine on some agents
+                                bat "powershell -NoProfile -NonInteractive -Command \"Invoke-WebRequest -Uri '${url}' -OutFile '${destPath}' -UseBasicParsing\""
+                                echo "Successfully downloaded ${fileName}"
+                            } catch (java.net.URISyntaxException e) {
+                                echo "WARNING: Invalid URL syntax: ${url}. Skipping. Error: ${e.getMessage()}"
+                            } catch (Exception e) {
+                                // Log error but continue, allowing other downloads to proceed.
+                                // The build might fail later if a critical dependency is missing.
+                                echo "ERROR: Failed to download ${url}. Error: ${e.toString()}"
+                                // If you want to fail the build on any download error, uncomment the next line:
+                                // error "Failed to download dependency: ${url}. ${e.getMessage()}"
+                            }
+                        }
+                        echo "--- Finished Dependency Download ---"
+                    }
+                }
+            }
+        }
+
         stage('Build Apps') {
             steps {
                 script {
                     def start = System.currentTimeMillis()
                     bat "if exist \"${OUTPUT_DIR}\" rmdir /s /q \"${OUTPUT_DIR}\""
                     bat "mkdir \"${OUTPUT_DIR}\""
-
-                    // NEW: Download libraries dynamically
-                    bat 'libs\\download-libs.bat'
 
                     def psScriptContent = '''
                         $ErrorActionPreference = 'Stop';
@@ -82,20 +136,22 @@ pipeline {
                        def libsDir = new File(absoluteLibsDirPath)
                        if (libsDir.isDirectory()) {
                            echo "SUCCESS: '${absoluteLibsDirPath}' is a directory. Listing its contents via 'bat dir':"
-                           bat "dir \"${absoluteLibsDirPath}\""
+                           bat "dir \"${absoluteLibsDirPath}\"" // This will now show downloaded JARs
                            File[] filesInLibsDir = libsDir.listFiles()
                            if (filesInLibsDir != null) {
                                for (File f : filesInLibsDir) {
                                    if (f.isFile() && f.getName().toLowerCase().endsWith(".jar")) {
                                        dependencyJars.add(f.getAbsolutePath().replace('/', '\\'))
                                        echo "DEBUG: Found dependency JAR: ${f.getAbsolutePath()}"
+                                   } else if (f.isFile()) {
+                                       echo "DEBUG: Ignored non-JAR file in libs directory: ${f.getName()}"
                                    }
                                }
                            } else {
                                echo "WARNING: listFiles() returned null for '${absoluteLibsDirPath}'."
                            }
                        } else {
-                           echo "WARNING: Calculated libs path '${absoluteLibsDirPath}' is NOT a directory (exists: ${libsDir.exists()})."
+                           echo "WARNING: Calculated libs path '${absoluteLibsDirPath}' is NOT a directory (exists: ${libsDir.exists()}). Dependencies might be missing."
                        }
                     } else {
                         echo "WARNING: LIBS_DIR_PATH environment variable is not set."
@@ -104,7 +160,7 @@ pipeline {
                     if (!dependencyJars.isEmpty()) {
                         echo "Found dependency JARs to add to classpath: ${dependencyJars.join(File.pathSeparator)}"
                     } else {
-                        echo "WARNING: No external dependency JARs found."
+                        echo "WARNING: No external dependency JARs found or loaded."
                     }
                     def commonClassPath = dependencyJars.join(File.pathSeparator)
                     String classPathOpt = commonClassPath.isEmpty() ? "" : "-cp \"${commonClassPath}\""
@@ -261,3 +317,4 @@ pipeline {
         }
     }
 }
+--- END OF FILE Jenkinsfile.txt ---
