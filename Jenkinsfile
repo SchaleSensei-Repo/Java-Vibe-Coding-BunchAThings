@@ -12,7 +12,7 @@ pipeline {
         GITHUB_CREDS = 'GITHUB_PAT'
         RELEASES_TO_KEEP = 3
         EMAIL_RECIPIENTS = 'ashlovedawn@gmail.com'
-        LIBS_DIR_PATH = 'libs' // Dependencies will be downloaded here
+        LIBS_DIR_PATH = 'libs'
         TEST_CLASSES_DIR_BASE = 'out/test-classes'
         TEST_REPORTS_DIR_BASE = 'out/test-reports'
     }
@@ -34,47 +34,51 @@ pipeline {
                         error "Dependency list file '${libsFile}' not found in workspace."
                     }
 
-                    // Read URLs from libs.txt, filter out empty/whitespace lines
                     def libUrls = readFile(libsFile).readLines().collect { it.trim() }.findAll { it }
 
                     if (libUrls.isEmpty()) {
                         echo "No URLs found in ${libsFile} or all lines were empty. Skipping download."
                     } else {
-                        // Ensure LIBS_DIR_PATH directory exists
                         def libsDirPath = env.LIBS_DIR_PATH
                         bat "if not exist \"${libsDirPath}\" mkdir \"${libsDirPath}\""
                         
                         echo "Found ${libUrls.size()} URL(s) to process from ${libsFile}."
                         libUrls.each { url ->
                             try {
-                                // Extract filename from URL
-                                def uri = new URI(url)
-                                def path = uri.getPath()
-                                def fileName = path.substring(path.lastIndexOf('/') + 1)
+                                // Extract filename from URL using string manipulation
+                                def fileName = url.substring(url.lastIndexOf('/') + 1)
                                 
                                 if (!fileName || fileName.isEmpty()) {
-                                    echo "WARNING: Could not extract a valid filename from URL: ${url}. Skipping."
+                                    echo "WARNING: Could not extract a valid filename (empty after substring) from URL: ${url}. Skipping."
                                     return // continue to next URL in Groovy .each
                                 }
+                                
+                                int queryIndex = fileName.indexOf('?')
+                                if (queryIndex != -1) {
+                                    fileName = fileName.substring(0, queryIndex)
+                                }
+                                int fragmentIndex = fileName.indexOf('#')
+                                if (fragmentIndex != -1) {
+                                    fileName = fileName.substring(0, fragmentIndex)
+                                }
 
-                                def destPath = "${libsDirPath}\\${fileName}".replace('/', '\\') // Ensure backslashes for bat commands
+                                if (!fileName || fileName.isEmpty()) { 
+                                    echo "WARNING: Could not extract a valid filename (empty after cleaning) from URL: ${url}. Skipping."
+                                    return 
+                                }
+
+                                def destPath = "${libsDirPath}\\${fileName}".replace('/', '\\')
                                 
                                 echo "Downloading ${url} to ${destPath}"
-                                // Using PowerShell for robust downloads (handles redirects, HTTPS well)
-                                // -UseBasicParsing can help avoid issues with IE engine on some agents
                                 bat "powershell -NoProfile -NonInteractive -Command \"Invoke-WebRequest -Uri '${url}' -OutFile '${destPath}' -UseBasicParsing\""
                                 echo "Successfully downloaded ${fileName}"
-                            } catch (java.net.URISyntaxException e) {
-                                echo "WARNING: Invalid URL syntax: ${url}. Skipping. Error: ${e.getMessage()}"
-                            } catch (Exception e) {
-                                // Log error but continue, allowing other downloads to proceed.
-                                // The build might fail later if a critical dependency is missing.
-                                echo "ERROR: Failed to download ${url}. Error: ${e.toString()}"
-                                // If you want to fail the build on any download error, uncomment the next line:
-                                // error "Failed to download dependency: ${url}. ${e.getMessage()}"
+                            } catch (Exception e) { 
+                                echo "ERROR: Failed to download or process filename for ${url}. Error: ${e.toString()}"
                             }
                         }
                         echo "--- Finished Dependency Download ---"
+                        echo "Verifying contents of ${libsDirPath}:"
+                        bat "dir \"${libsDirPath}\""
                     }
                 }
             }
@@ -134,7 +138,7 @@ pipeline {
                        def libsDir = new File(absoluteLibsDirPath)
                        if (libsDir.isDirectory()) {
                            echo "SUCCESS: '${absoluteLibsDirPath}' is a directory. Listing its contents via 'bat dir':"
-                           bat "dir \"${absoluteLibsDirPath}\"" // This will now show downloaded JARs
+                           bat "dir \"${absoluteLibsDirPath}\""
                            File[] filesInLibsDir = libsDir.listFiles()
                            if (filesInLibsDir != null) {
                                for (File f : filesInLibsDir) {
@@ -158,7 +162,7 @@ pipeline {
                     if (!dependencyJars.isEmpty()) {
                         echo "Found dependency JARs to add to classpath: ${dependencyJars.join(File.pathSeparator)}"
                     } else {
-                        echo "WARNING: No external dependency JARs found or loaded."
+                        echo "WARNING: No external dependency JARs found or loaded. Compilation may fail for projects needing these JARs."
                     }
                     def commonClassPath = dependencyJars.join(File.pathSeparator)
                     String classPathOpt = commonClassPath.isEmpty() ? "" : "-cp \"${commonClassPath}\""
@@ -265,13 +269,22 @@ pipeline {
                 bat "mkdir \"${RELEASE_PACKAGE_DIR}\""
                 bat "xcopy \"${OUTPUT_DIR}\\*.jar\" \"${RELEASE_PACKAGE_DIR}\\\" /Y /I > nul 2>&1 || echo No JARs in ${OUTPUT_DIR} to copy."
                 script {
-                    def rootJarAppsList = ['AppMainRoot']
+                    def rootJarAppsList = ['AppMainRoot'] // Example, adjust as needed
                     rootJarAppsList.each { appName ->
                         def jarFile = "${appName}.jar"
+                        // Check if root JAR exists in workspace root (where it might be built by specific logic)
                         if (fileExists(jarFile)) {
+                             echo "Copying root JAR ${jarFile} to ${RELEASE_PACKAGE_DIR}"
                             bat "copy \"${jarFile}\" \"${RELEASE_PACKAGE_DIR}\\\""
-                        } else {
-                            echo "Warning: Root JAR ${jarFile} not found in workspace root."
+                        } 
+                        // Also check if it exists in OUTPUT_DIR (if it's a standard build output not copied by xcopy yet)
+                        // This part might be redundant if xcopy handles it, but can be a fallback.
+                        else if (fileExists("${OUTPUT_DIR}/${jarFile}")) {
+                            echo "Copying root JAR ${OUTPUT_DIR}/${jarFile} to ${RELEASE_PACKAGE_DIR}"
+                            bat "copy \"${OUTPUT_DIR}\\${jarFile}\" \"${RELEASE_PACKAGE_DIR}\\\""
+                        }
+                        else {
+                            echo "Warning: Root JAR ${jarFile} not found in workspace root or ${OUTPUT_DIR}."
                         }
                     }
                 }
@@ -283,18 +296,95 @@ pipeline {
                 script {
                     def tag = "build-${env.BUILD_NUMBER}"
                     def message = "Automated build ${env.BUILD_NUMBER}"
-                    def zipFile = "${RELEASE_PACKAGE_DIR}.zip"
-                    bat "powershell Compress-Archive -Path \"${RELEASE_PACKAGE_DIR}\\*\" -DestinationPath \"${zipFile}\" -Force"
+                    def zipFileName = "${RELEASE_PACKAGE_DIR}.zip"
+                    // Ensure zipFilePath uses backslashes for PowerShell and is absolute
+                    def zipFilePath = "${env.WORKSPACE}\\${zipFileName}".replace('/', '\\') 
+
+                    echo "Creating archive: ${zipFilePath} from directory ${RELEASE_PACKAGE_DIR}"
+                    // Ensure the source path for Compress-Archive is correctly formatted for PowerShell
+                    def releasePackagePathForPS = "${env.WORKSPACE}\\${RELEASE_PACKAGE_DIR}".replace('/', '\\')
+                    bat "powershell Compress-Archive -Path \"${releasePackagePathForPS}\\*\" -DestinationPath \"${zipFilePath}\" -Force"
+
+                    if (!fileExists(zipFilePath)) {
+                        error "Failed to create release ZIP file: ${zipFilePath}"
+                    }
+
+                    // Escape special characters in JSON for PowerShell command line
                     String releaseData = "{ \\\"tag_name\\\": \\\"${tag}\\\", \\\"name\\\": \\\"${tag}\\\", \\\"body\\\": \\\"${message}\\\", \\\"draft\\\": false, \\\"prerelease\\\": false }"
+                    
                     withCredentials([string(credentialsId: "${GITHUB_CREDS}", variable: 'GH_TOKEN')]) {
-                        bat """
-                            curl -L -X POST ^
-                                 -H "Accept: application/vnd.github+json" ^
-                                 -H "Authorization: Bearer %GH_TOKEN%" ^
-                                 -H "X-GitHub-Api-Version: 2022-11-28" ^
-                                 https://api.github.com/repos/${GITHUB_REPO}/releases ^
-                                 -d "${releaseData}"
-                        """
+                        // PowerShell script to create release and upload asset
+                        def psScript = """
+                            \$ErrorActionPreference = 'Stop'
+                            \$ProgressPreference = 'SilentlyContinue' // Suppress progress bars for cleaner logs
+
+                            \$ghToken = "${GH_TOKEN}" // Injected by withCredentials
+                            \$repo = "${GITHUB_REPO}"
+                            \$releaseDataJson = '${releaseData.replace("\"", "\\\"")}' // Escape quotes for PS string
+                            \$zipFilePathForPS = "${zipFilePath.replace('\\', '\\\\')}" // Double escape backslashes for PS string
+                            \$zipFileNameForPS = "${zipFileName}"
+
+                            Write-Host "DEBUG: GH Token Length: \$(\$ghToken.Length)"
+                            Write-Host "DEBUG: Repo: \$repo"
+                            Write-Host "DEBUG: Release Data JSON for PS: \$releaseDataJson"
+                            Write-Host "DEBUG: Zip File Path for PS: \$zipFilePathForPS"
+                            Write-Host "DEBUG: Zip File Name for PS: \$zipFileNameForPS"
+                            
+                            Write-Host "Creating GitHub release..."
+                            \$headers = @{
+                                "Accept"               = "application/vnd.github+json"
+                                "Authorization"        = "Bearer \$ghToken"
+                                "X-GitHub-Api-Version" = "2022-11-28"
+                            }
+                            
+                            try {
+                                \$releaseResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/\$repo/releases" -Method Post -Headers \$headers -Body \$releaseDataJson -ContentType "application/json"
+                                Write-Host "Successfully created GitHub release."
+                            } catch {
+                                Write-Error "Failed to create GitHub release: \$(\$_.Exception.Message)"
+                                Write-Error "Response Status: \$(\$_.Exception.Response.StatusCode) \$(\$_.Exception.Response.StatusDescription)"
+                                Write-Error "Response Content: \$(\$_.Exception.Response.Content | Out-String)"
+                                exit 1
+                            }
+
+                            \$uploadUrlWithPlaceholder = \$releaseResponse.upload_url
+                            if (!\$uploadUrlWithPlaceholder) {
+                                Write-Error "Upload URL not found in release response."
+                                exit 1
+                            }
+                            Write-Host ("Raw Upload URL with placeholder: " + \$uploadUrlWithPlaceholder)
+
+                            # Correctly parse the upload URL (remove template part)
+                            \$uploadUrlBase = \$uploadUrlWithPlaceholder.Substring(0, \$uploadUrlWithPlaceholder.IndexOf('{'))
+                            \$finalUploadUrl = \$uploadUrlBase + "?name=" + [System.Uri]::EscapeDataString(\$zipFileNameForPS)
+                            Write-Host ("Formatted Upload URL for \$zipFileNameForPS: " + \$finalUploadUrl)
+
+                            Write-Host "Uploading asset: \$zipFilePathForPS to \$finalUploadUrl"
+                            
+                            # Use a different set of headers for upload, especially Content-Type
+                            \$uploadHeaders = @{
+                                "Authorization"        = "Bearer \$ghToken"
+                                "X-GitHub-Api-Version" = "2022-11-28"
+                                # Content-Type for asset upload is typically application/octet-stream or specific like application/zip
+                                "Content-Type"         = "application/zip" 
+                            }
+
+                            try {
+                                Invoke-RestMethod -Uri \$finalUploadUrl -Method Post -Headers \$uploadHeaders -InFile \$zipFilePathForPS 
+                                Write-Host "Successfully uploaded \$zipFileNameForPS to release ${tag}."
+                            } catch {
+                                Write-Error "Failed to upload asset: \$(\$_.Exception.Message)"
+                                Write-Error "Response Status: \$(\$_.Exception.Response.StatusCode) \$(\$_.Exception.Response.StatusDescription)"
+                                Write-Error "Response Content: \$(\$_.Exception.Response.Content | Out-String)"
+                                exit 1
+                            }
+                        """.stripIndent()
+
+                        // Execute the entire PowerShell script
+                        // Ensure quotes within psScript are handled correctly when passed to bat
+                        // One way is to replace all double quotes in psScript with triple double quotes for bat
+                        def escapedPsScript = psScript.replace('"', '"""') 
+                        bat script: "powershell -NoProfile -NonInteractive -Command \"${escapedPsScript}\""
                     }
                 }
             }
