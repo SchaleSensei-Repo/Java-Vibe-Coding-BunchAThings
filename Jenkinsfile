@@ -266,7 +266,7 @@ pipeline {
             }
         }
 
-                stage('Publish Release') {
+        stage('Publish Release') {
             steps {
                 script {
                     def tag = "build-${env.BUILD_NUMBER}"
@@ -281,8 +281,6 @@ pipeline {
                     if (!fileExists(zipFilePath)) {
                         error "Failed to create release ZIP file: ${zipFilePath}"
                     }
-
-                    String releaseData = "{ \\\"tag_name\\\": \\\"${tag}\\\", \\\"name\\\": \\\"${tag}\\\", \\\"body\\\": \\\"${message}\\\", \\\"draft\\\": false, \\\"prerelease\\\": false }"
                     
                     withCredentials([string(credentialsId: "${GITHUB_CREDS}", variable: 'GH_TOKEN')]) {
                         def psPublishScriptContent = """
@@ -291,14 +289,31 @@ pipeline {
 
                             \$ghToken = "${GH_TOKEN}" 
                             \$repo = "${GITHUB_REPO}"
-                            \$releaseDataJson = '${releaseData.replace("'", "''")}' 
+                            \$tag_name = "${tag}"
+                            \$release_name = "${tag}"
+                            # Escape special characters for PowerShell Here-String if message can contain them
+                            \$release_body = @"
+${message.replace("`", "``").replace('"', '""').replace("\$", "`\$")}
+"@.Trim() 
+                            \$draft_status = \$false
+                            \$prerelease_status = \$false
+
                             \$zipFilePathForPS = @"
 ${zipFilePath.replace('\\', '\\\\')}
 "@.Trim()
                             \$zipFileNameForPS = "${zipFileName}"
+                            
+                            \$releaseBodyHashtable = @{
+                                tag_name   = \$tag_name
+                                name       = \$release_name
+                                body       = \$release_body
+                                draft      = \$draft_status
+                                prerelease = \$prerelease_status
+                            }
+                            \$releaseDataJsonForApi = \$releaseBodyHashtable | ConvertTo-Json -Depth 5 
 
                             Write-Host "DEBUG: Repo: \$repo"
-                            Write-Host "DEBUG: Release Data JSON for PS: \$releaseDataJson"
+                            Write-Host "DEBUG: Release Data JSON for API: \$releaseDataJsonForApi"
                             Write-Host "DEBUG: Zip File Path for PS: \$zipFilePathForPS"
                             Write-Host "DEBUG: Zip File Name for PS: \$zipFileNameForPS"
                             
@@ -310,7 +325,7 @@ ${zipFilePath.replace('\\', '\\\\')}
                             }
                             
                             try {
-                                \$releaseResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/\$repo/releases" -Method Post -Headers \$headers -Body \$releaseDataJson -ContentType "application/json"
+                                \$releaseResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/\$repo/releases" -Method Post -Headers \$headers -Body \$releaseDataJsonForApi -ContentType "application/json"
                                 Write-Host "Successfully created GitHub release."
                             } catch {
                                 Write-Error "Failed to create GitHub release: \$(\$_.Exception.Message)"
@@ -329,7 +344,6 @@ ${zipFilePath.replace('\\', '\\\\')}
                             \$uploadUrlBase = \$uploadUrlWithPlaceholder.Substring(0, \$uploadUrlWithPlaceholder.IndexOf('{'))
                             \$finalUploadUrl = \$uploadUrlBase + "?name=" + [System.Uri]::EscapeDataString(\$zipFileNameForPS)
                             
-                            # Corrected Line:
                             Write-Host ("Formatted Upload URL for \${zipFileNameForPS}: " + \$finalUploadUrl) 
 
                             Write-Host "Uploading asset: \$zipFilePathForPS to \$finalUploadUrl"
@@ -342,7 +356,7 @@ ${zipFilePath.replace('\\', '\\\\')}
 
                             try {
                                 Invoke-RestMethod -Uri \$finalUploadUrl -Method Post -Headers \$uploadHeaders -InFile \$zipFilePathForPS
-                                Write-Host "Successfully uploaded \$zipFileNameForPS to release ${tag}."
+                                Write-Host "Successfully uploaded \$zipFileNameForPS to release \$tag_name."
                             } catch {
                                 Write-Error "Failed to upload asset: \$(\$_.Exception.Message)"
                                 Write-Error "Response Status: \$(\$_.Exception.Response.StatusCode) \$(\$_.Exception.Response.StatusDescription)"
