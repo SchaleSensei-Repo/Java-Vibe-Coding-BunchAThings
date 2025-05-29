@@ -207,7 +207,7 @@ pipeline {
                 script {
                     echo "--- Starting Unit Tests ---"
                     def workspacePath = env.WORKSPACE.replace('\\', '/')
-                    def workspacePathForPS = env.WORKSPACE.replace('/', '\\') 
+                    def workspacePathForPS = env.WORKSPACE.replace('/', '\\')
                     def testClassesBaseDir = "${workspacePath}/${env.TEST_CLASSES_DIR_BASE}".replace('/', File.separator)
                     def testReportsBaseDir = "${workspacePath}/${env.TEST_REPORTS_DIR_BASE}".replace('/', File.separator)
                     def psOutputFilePathGroovy = "${workspacePathForPS}\\test_root_dirs.txt" // Groovy variable with Windows path
@@ -220,15 +220,15 @@ pipeline {
                     String groovyPathForFileCheck = psOutputFilePathGroovy.replace('\\', '/')
                     if (fileExists(groovyPathForFileCheck)) {
                         echo "INFO Jenkinsfile GROOVY: Pre-deleting existing '${groovyPathForFileCheck}'"
-                        try { bat "del /Q /F \"${psOutputFilePathGroovy}\"" } catch (e) { 
+                        try { bat "del /Q /F \"${psOutputFilePathGroovy}\"" } catch (e) {
                             echo "WARNING Jenkinsfile GROOVY: Could not pre-delete '${psOutputFilePathGroovy}'. ${e.getMessage()}"
                         }
                     }
 
-                    // Using the SIMPLIFIED PowerShell script for debugging file creation
+                    // SIMPLIFIED PowerShell script for debugging file creation
                     def psSimplifiedScript = """
                         \$ErrorActionPreference = 'Stop'; 
-                        \$outputFilePathInPS = '${psOutputFilePathGroovy.replace('\\', '\\\\')}'
+                        \$outputFilePathInPS = "${psOutputFilePathGroovy.replace('\\', '\\\\')}" // Corrected Interpolation
 
                         Write-Host "DEBUG PS: This is PowerShell speaking."
                         Write-Host "DEBUG PS: Will attempt to write to: '\$outputFilePathInPS'"
@@ -253,14 +253,12 @@ pipeline {
                         exit 0 
                     """.stripIndent()
                     
-                    // This is the original complex script to find actual test roots.
-                    // Keep it commented out until the simplified script above works for file creation.
+                    // Original complex script (commented out for this debug run)
                     /*
                     def psComplexFindTestRootsScript = ""\"
-                        \$ErrorActionPreference = 'SilentlyContinue'; // Can be 'Stop' for harder failure
+                        \$ErrorActionPreference = 'SilentlyContinue'; 
                         \$baseSourcePath = "${workspacePath}/source"
-                        // Use the Groovy variable directly in PS, ensuring paths are PS-friendly
-                        \$outputFilePathInPS = '${psOutputFilePathGroovy.replace('\\', '\\\\')}'
+                        \$outputFilePathInPS = "${psOutputFilePathGroovy.replace('\\', '\\\\')}" // Corrected Interpolation
 
                         Write-Host "DEBUG Jenkinsfile PS: Searching for test roots under: \$baseSourcePath"
                         Write-Host "DEBUG Jenkinsfile PS: PowerShell will write output to: \$outputFilePathInPS"
@@ -287,7 +285,6 @@ pipeline {
                     ""\".stripIndent()
                     */
                     
-                    // Determine which PowerShell script to run (simplified for now)
                     byte[] psScriptBytesToRun = psSimplifiedScript.getBytes("UTF-16LE")
                     def encodedPsCommandToRun = psScriptBytesToRun.encodeBase64().toString()
 
@@ -309,8 +306,6 @@ pipeline {
                         if (fileContentFromGroovy.contains("PowerShell_was_here")) {
                             echo "SUCCESS Jenkinsfile GROOVY: Marker content found in file!"
                             echo "INFO: File creation debug successful. To run actual tests, use the complex PowerShell script and uncomment the main test loop."
-                            // For this debug, we stop further processing.
-                            // In a real run with the complex script, testRootDirsContentActual would be used.
                         } else {
                             error "Marker content not found in '${groovyPathForFileCheck}'. Content: '${fileContentFromGroovy}'"
                         }
@@ -328,18 +323,128 @@ pipeline {
                             error "'${groovyPathForFileCheck}' was not created or visible."
                         }
                     }
-
-                    // Placeholder for original test processing logic (currently bypassed by simplified PS script)
-                    def testRootDirsContentActual = readFile(file: groovyPathForFileCheck, encoding: 'UTF-8').trim() // Re-read in case of delay
+                    
+                    // This part is for when you revert to the complex PowerShell script
+                    def testRootDirsContentActual = readFile(file: groovyPathForFileCheck, encoding: 'UTF-8').trim()
                     if (testRootDirsContentActual.isEmpty() || !testRootDirsContentActual.contains("C:\\")) { 
                         echo "INFO: Content of '${groovyPathForFileCheck}' is marker or empty. Skipping actual test processing loop for this debug iteration."
                     } else {
-                        // This block would contain the full 'for' loop to process actual test roots
-                        // if the psComplexFindTestRootsScript was used and successful.
-                        echo "PLACEHOLDER: Actual test processing loop would run here if PowerShell script wrote paths."
-                        // def testRootDirsPaths = testRootDirsContentActual.split("\\r?\\n").collect { it.trim().replace('\\', '/') }.findAll { it }
-                        // for (String testRootDirPath : testRootDirsPaths) { ... }
-                    }
+                        def testRootDirsPaths = testRootDirsContentActual.split("\\r?\\n").collect { it.trim().replace('\\', '/') }.findAll { it }
+                        echo "Processing actual test root directories found in file: ${testRootDirsPaths}"
+                        
+                        def absoluteLibsDirPath = "${workspacePath}/${env.LIBS_DIR_PATH}".replace('/', File.separator)
+                        def dependencyJarsForTests = []
+                        if (env.LIBS_DIR_PATH) {
+                            def libsDirFile = new File(absoluteLibsDirPath)
+                            if (libsDirFile.isDirectory()) {
+                                File[] filesInLibsDir = libsDirFile.listFiles()
+                                if (filesInLibsDir != null) {
+                                    for (File f : filesInLibsDir) {
+                                        if (f.isFile() && f.getName().toLowerCase().endsWith(".jar")) {
+                                            dependencyJarsForTests.add(f.getAbsolutePath().replace('/', '\\'))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (dependencyJarsForTests.isEmpty()) {
+                            echo "WARNING: No dependency JARs found in '${absoluteLibsDirPath}'. Tests might fail."
+                        }
+                        def junitConsoleLauncherJar = dependencyJarsForTests.find { it.toLowerCase().contains("junit-platform-console-standalone") }
+                        if (!junitConsoleLauncherJar) {
+                            error "JUnit Platform Console Standalone JAR not found in libs directory ('${absoluteLibsDirPath}'). Cannot run tests."
+                        }
+
+                        for (String testRootDirPath : testRootDirsPaths) {
+                            echo "\n--- Processing tests in module containing: ${testRootDirPath} ---"
+                            File testRootFileObj = new File(testRootDirPath)
+                            File srcDirFileObj = testRootFileObj.getParentFile().getParentFile()
+                            File appModuleDirFileObj = srcDirFileObj.getParentFile()
+                            String appNameForOutputs = appModuleDirFileObj.getName()
+                            String derivedAppClassName = ""
+                            File mainJavaDir = new File(srcDirFileObj, "main/java")
+                            if (mainJavaDir.exists() && mainJavaDir.isDirectory()) {
+                                mainJavaDir.eachFileRecurse(groovy.io.FileType.FILES) { file ->
+                                    if (derivedAppClassName.isEmpty() && file.name.endsWith('.java')) {
+                                        if (file.text.contains("public static void main")) {
+                                            derivedAppClassName = file.name.replace('.java', '')
+                                        }
+                                    }
+                                }
+                            }
+                            if (derivedAppClassName.isEmpty()) {
+                                derivedAppClassName = appModuleDirFileObj.getName()
+                                echo "INFO: Could not find a main class in ${mainJavaDir}. Using module name '${derivedAppClassName}' for _classes dir lookup."
+                            } else {
+                                echo "INFO: Found main class '${derivedAppClassName}' in ${mainJavaDir} for module ${appModuleDirFileObj.getName()}."
+                            }
+                            appNameForOutputs = derivedAppClassName
+                            echo "DEBUG: Module dir name: ${appModuleDirFileObj.getName()}, App Class Name for _classes dir: ${derivedAppClassName}"
+                            def appClassOutputDir = "${workspacePath}/${env.OUTPUT_DIR}/${derivedAppClassName}_classes".replace('/', File.separator)
+                            echo "Deduced AppName for test outputs: ${appNameForOutputs}"
+                            echo "Expected App class output dir: ${appClassOutputDir}"
+
+                            if (!new File(appClassOutputDir).exists()) {
+                                echo "ERROR: Application class output directory '${appClassOutputDir}' not found for module/app '${derivedAppClassName}'. Trying to find related _classes dir..."
+                                String searchPatternForClasses = appModuleDirFileObj.getName().toLowerCase()
+                                def foundMatchingClassDir = ""
+                                new File("${workspacePath}/${env.OUTPUT_DIR}".replace('/', File.separator)).eachDirMatch(~/.*_classes/) { dir ->
+                                    String classNameFromDir = dir.name.replace('_classes', '').toLowerCase()
+                                    if (testRootDirPath.toLowerCase().contains(classNameFromDir) || classNameFromDir.contains(searchPatternForClasses) || appModuleDirFileObj.getName().toLowerCase().contains(classNameFromDir)) {
+                                        if (foundMatchingClassDir.isEmpty()) {
+                                            foundMatchingClassDir = dir.getAbsolutePath().replace('/', File.separator)
+                                            echo "INFO: Found plausible related app class dir: ${foundMatchingClassDir}"
+                                        } else {
+                                            echo "INFO: Found another plausible related app class dir: ${dir.getAbsolutePath().replace('/', File.separator)}, sticking with first: ${foundMatchingClassDir}"
+                                        }
+                                    }
+                                }
+                                if (!foundMatchingClassDir.isEmpty()) { appClassOutputDir = foundMatchingClassDir }
+                                else {
+                                    echo "ERROR: Still could not find a suitable application class output directory. Skipping tests for this module: ${appNameForOutputs}"; continue
+                                }
+                            }
+                            def currentTestClassesDir = "${testClassesBaseDir}/${appNameForOutputs}".replace('/', File.separator)
+                            def currentTestReportsDir = "${testReportsBaseDir}/${appNameForOutputs}".replace('/', File.separator)
+                            bat "if not exist \"${currentTestClassesDir}\" mkdir \"${currentTestClassesDir}\""
+                            bat "if not exist \"${currentTestReportsDir}\" mkdir \"${currentTestReportsDir}\""
+                            def psFindModuleTestsScript = """
+                                \$ErrorActionPreference = 'Stop';
+                                \$testJavaFiles = Get-ChildItem -Path "${testRootDirPath.replace('/', '\\')}" -Recurse -Filter *.java | ForEach-Object { \$_.FullName };
+                                if (\$null -ne \$testJavaFiles -and \$testJavaFiles.Count -gt 0) {
+                                    [System.IO.File]::WriteAllLines("test_java_files_${appNameForOutputs}.txt", \$testJavaFiles, [System.Text.UTF8Encoding]::new(\$false))
+                                } else { Set-Content -Path "test_java_files_${appNameForOutputs}.txt" -Value '' }
+                            """.stripIndent()
+                            byte[] moduleTestScriptBytes = psFindModuleTestsScript.getBytes("UTF-16LE")
+                            def encodedModuleTestCmd = moduleTestScriptBytes.encodeBase64().toString()
+                            bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedModuleTestCmd}"
+                            def moduleTestFileContent = readFile(file: "test_java_files_${appNameForOutputs}.txt", encoding: 'UTF-8').trim()
+                            bat "del \"test_java_files_${appNameForOutputs}.txt\""
+                            if (moduleTestFileContent.isEmpty()) {
+                                echo "No Java test files found in ${testRootDirPath}. Skipping tests for this module."; continue
+                            }
+                            def testJavaFiles = moduleTestFileContent.split("\\r?\\n").collect { it.trim().replace('\\', '/') }.findAll { it }
+                            echo "Test files for ${appNameForOutputs}: ${testJavaFiles}"
+                            String testSourcePathForCompiler = srcDirFileObj.getAbsolutePath().replace('/', File.separator)
+                            def testCompileClasspathList = dependencyJarsForTests.clone()
+                            testCompileClasspathList.add(appClassOutputDir)
+                            def testCompileClasspath = testCompileClasspathList.join(File.pathSeparator)
+                            String testCompileCpOptForModule = testCompileClasspath.isEmpty() ? "" : "-cp \"${testCompileClasspath}\""
+                            def testFilesToCompileCmdModule = testJavaFiles.collect { "\"${it.replace('/', '\\')}\"" }.join(" ")
+                            def testCompileCommandModule = "javac -encoding UTF-8 ${testCompileCpOptForModule} -d \"${currentTestClassesDir}\" -sourcepath \"${testSourcePathForCompiler}\" ${testFilesToCompileCmdModule}"
+                            echo "Test Compile CMD for ${appNameForOutputs}: ${testCompileCommandModule}"
+                            try { bat testCompileCommandModule } catch (e) {
+                                echo "ERROR during test compilation for ${appNameForOutputs}. Command: ${testCompileCommandModule}. Exception: ${e.toString()}"; continue
+                            }
+                            def testRuntimeClasspathList = [currentTestClassesDir] + testCompileClasspathList
+                            def testRuntimeClasspath = testRuntimeClasspathList.unique().join(File.pathSeparator)
+                            def runTestsCommandModule = "java -jar \"${junitConsoleLauncherJar}\" --classpath \"${testRuntimeClasspath}\" --scan-classpath \"${currentTestClassesDir}\" --reports-dir \"${currentTestReportsDir}\""
+                            echo "Run Tests CMD for ${appNameForOutputs}: ${runTestsCommandModule}"
+                            try { bat runTestsCommandModule } catch (e) {
+                                echo "ERROR during test execution for ${appNameForOutputs}. Command: ${runTestsCommandModule}. Exception: ${e.toString()}"
+                            }
+                        } // End for loop
+                    } // End else (testRootDirsContentActual is not marker)
 
                     junit allowEmptyResults: true, testResults: "${env.TEST_REPORTS_DIR_BASE.replace('/', File.separator)}/**/*.xml"
                     echo "--- Finished Unit Tests ---"
