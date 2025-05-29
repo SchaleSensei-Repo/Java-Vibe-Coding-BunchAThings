@@ -4,6 +4,11 @@ pipeline {
     triggers {
         pollSCM('H/10 * * * *')
     }
+    
+    options {
+        // Add this to clean before checkout
+        skipDefaultCheckout true
+    }
 
     environment {
         OUTPUT_DIR = 'out'
@@ -19,8 +24,10 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
+        stage('Clean and Checkout') {
             steps {
+                // Clean the workspace before checkout
+                cleanWs()
                 // Ensure you are checking out the commit that HAS the corrected Jenkinsfile
                 checkout scm
             }
