@@ -32,6 +32,9 @@ pipeline {
                     bat "if exist \"${OUTPUT_DIR}\" rmdir /s /q \"${OUTPUT_DIR}\""
                     bat "mkdir \"${OUTPUT_DIR}\""
 
+                    // NEW: Download libraries dynamically
+                    bat 'libs\\download-libs.bat'
+
                     def psScriptContent = '''
                         $ErrorActionPreference = 'Stop';
                         $javaFilePaths = Get-ChildItem -Recurse -Filter *.java |

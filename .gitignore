@@ -3,6 +3,5 @@
 *.properties
 *.log
 *.jar
-!library/*.jar
 apache-maven-3.9.9/
 words_dictionary.json
