@@ -207,6 +207,7 @@ pipeline {
                 script {
                     echo "--- Starting Unit Tests ---"
                     def workspacePath = env.WORKSPACE.replace('\\', '/')
+                    def workspacePathForPS = env.WORKSPACE.replace('/', '\\') // For PowerShell paths
                     def testClassesBaseDir = "${workspacePath}/${env.TEST_CLASSES_DIR_BASE}".replace('/', File.separator)
                     def testReportsBaseDir = "${workspacePath}/${env.TEST_REPORTS_DIR_BASE}".replace('/', File.separator)
 
@@ -218,7 +219,10 @@ pipeline {
                     def psDebugFindTestRootsScript = """
                         \$ErrorActionPreference = 'SilentlyContinue';
                         \$baseSourcePath = "${workspacePath}/source"
+                        \$outputFilePath = Join-Path -Path "${workspacePathForPS}" -ChildPath "test_root_dirs.txt"
+
                         Write-Host "DEBUG Jenkinsfile: Searching for test roots under: \$baseSourcePath"
+                        Write-Host "DEBUG Jenkinsfile: PowerShell will write output to: \$outputFilePath"
 
                         \$allJavaDirs = Get-ChildItem -Path \$baseSourcePath -Recurse -Directory -Filter "java" | ForEach-Object { \$_.FullName }
                         if (\$null -ne \$allJavaDirs -and \$allJavaDirs.Count -gt 0) {
@@ -233,12 +237,12 @@ pipeline {
                         if (\$null -ne \$testRootDirs -and \$testRootDirs.Count -gt 0) {
                             Write-Host "DEBUG Jenkinsfile: Filtered test root directories (matching 'src/test/java' pattern):"
                             \$testRootDirs | ForEach-Object { Write-Host ("  JENKINS_TEST_ROOT_MATCHED: " + \$_) }
-                            \$testRootDirs | Out-File -FilePath 'test_root_dirs.txt' -Encoding utf8NoBOM
+                            \$testRootDirs | Out-File -FilePath \$outputFilePath -Encoding utf8NoBOM
                         } else {
                             Write-Host "DEBUG Jenkinsfile: No directories matched the pattern '[\\\\\\/]src[\\\\\\/]test[\\\\\\/]java\$' after filtering."
-                            Set-Content -Path 'test_root_dirs.txt' -Value ''
+                            Set-Content -Path \$outputFilePath -Value ''
                         }
-                        exit 0 # Explicitly exit with 0
+                        exit 0 
                     """.stripIndent()
                     byte[] debugTestRootsScriptBytes = psDebugFindTestRootsScript.getBytes("UTF-16LE")
                     def encodedDebugTestRootsCommand = debugTestRootsScriptBytes.encodeBase64().toString()
