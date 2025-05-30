@@ -7,7 +7,9 @@ pipeline {
 
     environment {
         OUTPUT_DIR = 'out'
-        RELEASE_PACKAGE_DIR = 'release_package'
+        RELEASE_PACKAGE_DIR = 'release_package' 
+        TEMP_RELEASE_STAGING_DIR = 'temp_release_staging' 
+        MAIN_HUB_JAR_NAME = 'main hub.jar' // Adjusted for space
         GITHUB_REPO = 'SchaleSensei-Repo/Java-Vibe-Coding-BunchAThings'
         GITHUB_CREDS = 'GITHUB_PAT'
         RELEASES_TO_KEEP = 3
@@ -114,7 +116,7 @@ pipeline {
                         error "No Java files with a main method were found after processing main_java_files.txt."
                     }
 
-                    def rootJarApps = ['AppMainRoot']
+                    def rootJarApps = ['AppMainRoot'] 
                     def dependencyJars = []
                     def workspacePath = env.WORKSPACE
                     def absoluteLibsDirPath = "${workspacePath}\\${env.LIBS_DIR_PATH}".replace('/', File.separator)
@@ -211,9 +213,11 @@ pipeline {
 
                         [(classNameOnly): {
                             def jarName = "${classNameOnly}.jar"
-                            def jarPathRelative = rootJarApps.contains(classNameOnly)
-                                ? jarName.replace('/', '\\')
-                                : "${OUTPUT_DIR}\\${jarName}".replace('/', '\\')
+                            def jarPathRelative = "${OUTPUT_DIR}\\${jarName}".replace('/', '\\')
+                            if (rootJarApps.contains(classNameOnly)) {
+                                jarPathRelative = jarName.replace('/', '\\') 
+                                echo "INFO: ${classNameOnly} is a root JAR, will be placed in workspace root: ${jarPathRelative}"
+                            }
                             echo "--- Processing App: ${classNameOnly} ---"
                             echo "  Source File: ${fullFilePath}"
                             echo "  FQCN: ${fqcn}"
@@ -243,25 +247,53 @@ pipeline {
         
         stage('Create Release Package') {
             steps {
-                bat "if exist \"${RELEASE_PACKAGE_DIR}\" rmdir /s /q \"${RELEASE_PACKAGE_DIR}\""
-                bat "mkdir \"${RELEASE_PACKAGE_DIR}\""
-                bat "xcopy \"${OUTPUT_DIR}\\*.jar\" \"${RELEASE_PACKAGE_DIR}\\\" /Y /I > nul 2>&1 || echo No JARs in ${OUTPUT_DIR} to copy."
                 script {
-                    def rootJarAppsList = ['AppMainRoot']
-                    rootJarAppsList.each { appName ->
-                        def jarFile = "${appName}.jar"
-                        if (fileExists(jarFile)) {
-                             echo "Copying root JAR ${jarFile} to ${RELEASE_PACKAGE_DIR}"
-                            bat "copy \"${jarFile}\" \"${RELEASE_PACKAGE_DIR}\\\""
-                        } 
-                        else if (fileExists("${OUTPUT_DIR}/${jarFile}")) {
-                            echo "Copying root JAR ${OUTPUT_DIR}/${jarFile} to ${RELEASE_PACKAGE_DIR}"
-                            bat "copy \"${OUTPUT_DIR}\\${jarFile}\" \"${RELEASE_PACKAGE_DIR}\\\""
-                        }
-                        else {
-                            echo "Warning: Root JAR ${jarFile} not found in workspace root or ${OUTPUT_DIR}."
+                    bat "if exist \"${TEMP_RELEASE_STAGING_DIR}\" rmdir /s /q \"${TEMP_RELEASE_STAGING_DIR}\""
+                    bat "mkdir \"${TEMP_RELEASE_STAGING_DIR}\""
+                    bat "mkdir \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\"" 
+
+                    def quotedMainHubJarNameForBat = "\"${MAIN_HUB_JAR_NAME}\"" // For use in bat commands
+                    def mainHubJarSourcePathInOutput = "${OUTPUT_DIR}\\${MAIN_HUB_JAR_NAME}" // Path for fileExists
+
+                    if (fileExists(mainHubJarSourcePathInOutput)) {
+                        echo "Copying main hub JAR: ${mainHubJarSourcePathInOutput} to ${TEMP_RELEASE_STAGING_DIR}\\${MAIN_HUB_JAR_NAME}"
+                        bat "copy \"${mainHubJarSourcePathInOutput}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedMainHubJarNameForBat}\""
+                    } else if (MAIN_HUB_JAR_NAME == "AppMainRoot.jar" && fileExists(MAIN_HUB_JAR_NAME)) { // Check if it was a rootApp built to workspace
+                         echo "Copying root AppMainRoot.jar (as Main Hub): ${MAIN_HUB_JAR_NAME} to ${TEMP_RELEASE_STAGING_DIR}\\${MAIN_HUB_JAR_NAME}"
+                         bat "copy \"${MAIN_HUB_JAR_NAME}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedMainHubJarNameForBat}\""
+                    } else {
+                       echo "WARNING: Main hub JAR ${MAIN_HUB_JAR_NAME} not found in ${OUTPUT_DIR} or workspace root. It will be missing from the release ZIP root."
+                    }
+                    
+                    echo "Copying other JARs from ${OUTPUT_DIR} to ${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\"
+                    bat """
+                        for %%f in ("${OUTPUT_DIR}\\*.jar") do (
+                            if /I not "%%~nxf"==${quotedMainHubJarNameForBat} (
+                                copy "%%f" "${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\"
+                            ) else (
+                                echo "Skipping %%~nxf as it's the main hub JAR ('${MAIN_HUB_JAR_NAME}') and already copied to root."
+                            )
+                        )
+                    """
+                    
+                    def appMainRootJarName = "AppMainRoot.jar"
+                    def quotedAppMainRootJarNameForBat = "\"${appMainRootJarName}\""
+                    if (appMainRootJarName != MAIN_HUB_JAR_NAME) { // Only if AppMainRoot is different from the main hub
+                        if (fileExists(appMainRootJarName)) { 
+                             echo "Copying specific root JAR ${appMainRootJarName} to ${TEMP_RELEASE_STAGING_DIR}\\${appMainRootJarName}"
+                            bat "copy \"${appMainRootJarName}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedAppMainRootJarNameForBat}\""
+                        } else if (fileExists("${OUTPUT_DIR}\\${appMainRootJarName}")) { 
+                            echo "Copying specific root JAR ${OUTPUT_DIR}\\${appMainRootJarName} to ${TEMP_RELEASE_STAGING_DIR}\\${appMainRootJarName}"
+                            bat "copy \"${OUTPUT_DIR}\\${appMainRootJarName}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedAppMainRootJarNameForBat}\""
+                            // If AppMainRoot was in OUTPUT_DIR and copied to staging root, remove it from staging/output to avoid duplication
+                            // This assumes AppMainRoot.jar, if it exists, is *only* meant for the root of the zip.
+                            bat "if exist \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\${appMainRootJarName}\" del \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\${quotedAppMainRootJarNameForBat}\""
+                        } else {
+                            echo "Warning: Specific root JAR ${appMainRootJarName} not found."
                         }
                     }
+                    echo "Contents of staging directory ${TEMP_RELEASE_STAGING_DIR}:"
+                    bat "dir /s \"${TEMP_RELEASE_STAGING_DIR}\""
                 }
             }
         }
@@ -271,12 +303,12 @@ pipeline {
                 script {
                     def tag = "build-${env.BUILD_NUMBER}"
                     def message = "Automated build ${env.BUILD_NUMBER}"
-                    def zipFileName = "${RELEASE_PACKAGE_DIR}.zip"
+                    def zipFileName = "${RELEASE_PACKAGE_DIR}.zip" 
                     def zipFilePath = "${env.WORKSPACE}\\${zipFileName}".replace('/', '\\') 
 
-                    echo "Creating archive: ${zipFilePath} from directory ${RELEASE_PACKAGE_DIR}"
-                    def releasePackagePathForPS = "${env.WORKSPACE}\\${RELEASE_PACKAGE_DIR}".replace('/', '\\')
-                    bat "powershell -NoProfile -NonInteractive Compress-Archive -Path \"${releasePackagePathForPS}\\*\" -DestinationPath \"${zipFilePath}\" -Force"
+                    def tempStagingPathForPS = "${env.WORKSPACE}\\${TEMP_RELEASE_STAGING_DIR}".replace('/', '\\')
+                    echo "Creating archive: ${zipFilePath} from directory ${tempStagingPathForPS}"
+                    bat "powershell -NoProfile -NonInteractive Compress-Archive -Path \"${tempStagingPathForPS}\\*\" -DestinationPath \"${zipFilePath}\" -Force"
 
                     if (!fileExists(zipFilePath)) {
                         error "Failed to create release ZIP file: ${zipFilePath}"
@@ -291,7 +323,6 @@ pipeline {
                             \$repo = "${GITHUB_REPO}"
                             \$tag_name = "${tag}"
                             \$release_name = "${tag}"
-                            # Escape special characters for PowerShell Here-String if message can contain them
                             \$release_body = @"
 ${message.replace("`", "``").replace('"', '""').replace("\$", "`\$")}
 "@.Trim() 
@@ -301,7 +332,7 @@ ${message.replace("`", "``").replace('"', '""').replace("\$", "`\$")}
                             \$zipFilePathForPS = @"
 ${zipFilePath.replace('\\', '\\\\')}
 "@.Trim()
-                            \$zipFileNameForPS = "${zipFileName}"
+                            \$zipFileNameForPS = "${zipFileName}" 
                             
                             \$releaseBodyHashtable = @{
                                 tag_name   = \$tag_name
@@ -314,8 +345,8 @@ ${zipFilePath.replace('\\', '\\\\')}
 
                             Write-Host "DEBUG: Repo: \$repo"
                             Write-Host "DEBUG: Release Data JSON for API: \$releaseDataJsonForApi"
-                            Write-Host "DEBUG: Zip File Path for PS: \$zipFilePathForPS"
-                            Write-Host "DEBUG: Zip File Name for PS: \$zipFileNameForPS"
+                            Write-Host "DEBUG: Zip File Path for PS (local path to upload): \$zipFilePathForPS"
+                            Write-Host "DEBUG: Zip File Name for PS (asset name on GitHub): \$zipFileNameForPS"
                             
                             Write-Host "Creating GitHub release..."
                             \$headers = @{
