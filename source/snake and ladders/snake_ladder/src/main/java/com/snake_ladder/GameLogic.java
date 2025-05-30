@@ -16,7 +16,7 @@ public class GameLogic {
     private List<Player> players;
     private List<BoardTile> board;
     private int currentPlayerIndex;
-    private MainFrame gui;
+    private Snake_and_Ladder_Warp_Variation gui;
     private boolean gameStarted = false;
     private boolean gameOver = false;
     private boolean processingAiTurn = false;
@@ -28,7 +28,7 @@ public class GameLogic {
         Color.MAGENTA, Color.CYAN, Color.YELLOW, Color.PINK
     };
 
-    public GameLogic(GameSettings settings, MainFrame gui) {
+    public GameLogic(GameSettings settings, Snake_and_Ladder_Warp_Variation gui) {
         this.settings = settings;
         this.gui = gui;
         this.players = new ArrayList<>();

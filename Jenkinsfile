@@ -9,7 +9,7 @@ pipeline {
         OUTPUT_DIR = 'out'
         RELEASE_PACKAGE_DIR = 'release_package' 
         TEMP_RELEASE_STAGING_DIR = 'temp_release_staging' 
-        MAIN_HUB_JAR_NAME = 'JarHubApp.jar' // Adjusted for space
+        MAIN_HUB_JAR_NAME = 'Jar_Main_Hub.jar' // Adjusted for space
         GITHUB_REPO = 'SchaleSensei-Repo/Java-Vibe-Coding-BunchAThings'
         GITHUB_CREDS = 'GITHUB_PAT'
         RELEASES_TO_KEEP = 3

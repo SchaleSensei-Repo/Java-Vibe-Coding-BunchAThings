@@ -14,7 +14,7 @@ import java.util.Collections;
 
 public class SettingsDialog extends JDialog {
     private GameSettings settings;
-    private BattleshipGameGUI gameGUI; // Reference to the main GUI to trigger restarts
+    private battleship gameGUI; // Reference to the main GUI to trigger restarts
 
     private JTextField rowsField;
     private JTextField colsField;
@@ -23,7 +23,7 @@ public class SettingsDialog extends JDialog {
     private JTextField firesPerTurnField;
     private JCheckBox dynamicFiresCheckbox;
 
-    public SettingsDialog(JFrame parent, GameSettings settings, BattleshipGameGUI gameGUI) {
+    public SettingsDialog(JFrame parent, GameSettings settings, battleship gameGUI) {
         super(parent, "Game Settings", true); // true makes it modal
         this.settings = settings;
         this.gameGUI = gameGUI;

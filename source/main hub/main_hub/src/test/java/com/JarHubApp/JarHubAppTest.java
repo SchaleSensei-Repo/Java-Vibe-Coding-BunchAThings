@@ -23,30 +23,30 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class JarHubAppTest {
+class Jar_Main_HubTest {
 
-    private JarHubApp app;
+    private Jar_Main_Hub app;
     private File settingsFile;
 
-    // Use @TempDir for temporary files, but JarHubApp uses a fixed name "hub_setting.ini"
+    // Use @TempDir for temporary files, but Jar_Main_Hub uses a fixed name "hub_setting.ini"
     // So we'll manage it manually for some tests.
     private Path tempSettingsDir;
 
     @BeforeEach
     void setUp(@TempDir Path tempDir) throws IOException {
         // Store original System.out and System.err
-        // JarHubApp.originalSystemOut = System.out; // JarHubApp itself handles this
-        // JarHubApp.originalSystemErr = System.err;
+        // Jar_Main_Hub.originalSystemOut = System.out; // Jar_Main_Hub itself handles this
+        // Jar_Main_Hub.originalSystemErr = System.err;
 
         // Create a temporary directory for settings to avoid polluting the project
         tempSettingsDir = Files.createDirectory(tempDir.resolve("settingsTest"));
         settingsFile = tempSettingsDir.resolve("hub_setting.ini").toFile();
 
-        // Critical: JarHubApp constructor loads settings. We need to ensure it uses our temp file.
-        // This is hard without DI or refactoring JarHubApp to accept settings file path.
+        // Critical: Jar_Main_Hub constructor loads settings. We need to ensure it uses our temp file.
+        // This is hard without DI or refactoring Jar_Main_Hub to accept settings file path.
         // For now, we'll test specific methods or use workarounds.
 
-        // To test JarHubApp instantiation, we need to prevent JOptionPane from blocking tests
+        // To test Jar_Main_Hub instantiation, we need to prevent JOptionPane from blocking tests
         // and handle single instance lock. This is complex for unit tests.
         // Let's focus on testing specific, isolatable logic first.
     }
@@ -64,18 +64,18 @@ class JarHubAppTest {
                  .forEach(File::delete);
         }
         // Restore original System.out and System.err if they were changed by tests directly
-        // System.setOut(JarHubApp.originalSystemOut);
-        // System.setErr(JarHubApp.originalSystemErr);
+        // System.setOut(Jar_Main_Hub.originalSystemOut);
+        // System.setErr(Jar_Main_Hub.originalSystemErr);
     }
 
     @Test
     void testIsPathOrSubpath() {
         // Need an instance to call non-static method, or make it static
         // For this test, let's assume we can create a dummy app instance or make method static
-        // If JarHubApp has a default constructor that doesn't do too much FS I/O or UI:
-        // JarHubApp localApp = new JarHubApp(); // This might be problematic due to constructor side effects.
+        // If Jar_Main_Hub has a default constructor that doesn't do too much FS I/O or UI:
+        // Jar_Main_Hub localApp = new Jar_Main_Hub(); // This might be problematic due to constructor side effects.
 
-        // Alternative: Extract isPathOrSubpath to a utility class or make it static in JarHubApp.
+        // Alternative: Extract isPathOrSubpath to a utility class or make it static in Jar_Main_Hub.
         // For this example, assuming it's accessible. If not static, this test needs a different setup.
 
         Path main = Path.of("/usr/local/apps");
@@ -87,11 +87,11 @@ class JarHubAppTest {
 
         // To call a private method, you'd need reflection or make it package-private/protected.
         // For simplicity, let's imagine it was public static for this test scenario.
-        // assertTrue(JarHubApp.isPathOrSubpath_static(main, sub));
-        // assertFalse(JarHubApp.isPathOrSubpath_static(main, notSub));
-        // assertTrue(JarHubApp.isPathOrSubpath_static(main, equal));
-        // assertTrue(JarHubApp.isPathOrSubpath_static(relativeMain.toAbsolutePath(), relativeSub.toAbsolutePath()));
-        // assertFalse(JarHubApp.isPathOrSubpath_static(sub, main));
+        // assertTrue(Jar_Main_Hub.isPathOrSubpath_static(main, sub));
+        // assertFalse(Jar_Main_Hub.isPathOrSubpath_static(main, notSub));
+        // assertTrue(Jar_Main_Hub.isPathOrSubpath_static(main, equal));
+        // assertTrue(Jar_Main_Hub.isPathOrSubpath_static(relativeMain.toAbsolutePath(), relativeSub.toAbsolutePath()));
+        // assertFalse(Jar_Main_Hub.isPathOrSubpath_static(sub, main));
 
         // Since isPathOrSubpath is private in the provided code, direct testing is hard.
         // This highlights a common issue: untestable private methods.
@@ -104,7 +104,7 @@ class JarHubAppTest {
     }
 
 
-    // Testing settings load/save is tricky because JarHubApp hardcodes "hub_setting.ini"
+    // Testing settings load/save is tricky because Jar_Main_Hub hardcodes "hub_setting.ini"
     // and its constructor loads it. We need to control this file.
 
     @Test
@@ -121,7 +121,7 @@ class JarHubAppTest {
             props.store(writer, "Test Settings");
         }
 
-        // Now, if we had a method in JarHubApp to *just* load properties from a given file:
+        // Now, if we had a method in Jar_Main_Hub to *just* load properties from a given file:
         // Properties loadedProps = app.loadPropertiesFromFile(settingsFile);
         // assertEquals(testFolderPath, loadedProps.getProperty("folderPath"));
         // assertEquals(String.valueOf(testShowConsole), loadedProps.getProperty("showHubConsole"));
@@ -129,9 +129,9 @@ class JarHubAppTest {
         // And a method to save:
         // app.savePropertiesToFile(newProps, settingsFile);
 
-        // Without such refactoring, testing the exact load/save methods of JarHubApp is difficult
+        // Without such refactoring, testing the exact load/save methods of Jar_Main_Hub is difficult
         // in a pure unit test because they are tied to the instance and its lifecycle.
-        // We can test the Properties class itself, but that's not testing JarHubApp.
+        // We can test the Properties class itself, but that's not testing Jar_Main_Hub.
         System.out.println("Skipping testSettingsPersistenceLogic due to hardcoded file paths and constructor loading, requires refactoring for isolated testing.");
         assertTrue(true, "Placeholder for settings persistence test (requires refactoring)");
     }
@@ -150,27 +150,27 @@ class JarHubAppTest {
             PrintStream originalErr = System.err;
             System.setErr(new PrintStream(OutputStream.nullOutputStream())); // Suppress error messages during this test
 
-            JarHubApp testApp = null;
-            boolean lockAcquired = JarHubApp.acquireSingleInstanceLock(); // Try to acquire lock
+            Jar_Main_Hub testApp = null;
+            boolean lockAcquired = Jar_Main_Hub.acquireSingleInstanceLock(); // Try to acquire lock
 
             if (lockAcquired) {
                 try {
                     // The constructor itself does a lot (loads settings, sets up UI).
                     // If it relies on specific system properties or files existing, this might fail.
-                    testApp = new JarHubApp(); // This will try to load "hub_setting.ini" from CWD
-                    assertNotNull(testApp, "JarHubApp instance should be created.");
+                    testApp = new Jar_Main_Hub(); // This will try to load "hub_setting.ini" from CWD
+                    assertNotNull(testApp, "Jar_Main_Hub instance should be created.");
                     assertTrue(testApp.isVisible() || !testApp.isDisplayable(), "App should be invisible initially or not displayable yet.");
                     // More assertions on initial component states can be added here, e.g.:
                     // assertNotNull(testApp.showHubConsoleCheckBox, "showHubConsoleCheckBox should exist");
                     // assertFalse(testApp.showHubConsoleCheckBox.isSelected(), "Hub console should be off by default if no settings");
 
                 } catch (Exception e) {
-                    fail("JarHubApp instantiation failed: " + e.getMessage(), e);
+                    fail("Jar_Main_Hub instantiation failed: " + e.getMessage(), e);
                 } finally {
                     if (testApp != null && testApp.isDisplayable()) {
                         testApp.dispose(); // Clean up the frame
                     }
-                    JarHubApp.releaseSingleInstanceLockOnly(); // Release the lock
+                    Jar_Main_Hub.releaseSingleInstanceLockOnly(); // Release the lock
                 }
             } else {
                 System.out.println("Skipping testBasicAppInstantiation as single instance lock could not be acquired (another instance might be running or lock file issue).");
