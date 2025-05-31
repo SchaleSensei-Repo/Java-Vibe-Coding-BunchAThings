@@ -166,6 +166,14 @@ This repository is intended for learning, experimentation, and sharing small, fu
   - Simple calculation model
 </details>
 
+<details>
+  <summary><strong>18. Nuclear Casualty Estimate Calculator </strong></summary>
+  - Calculate the casualty based on nuclear warhead impact or radiation levels
+  - Have option to enable/disable nuclear winter and humanitarian aid
+  - The output result have some description and calculation result table
+  - The calculation is only based on rough estimate and not reflect on real scientific calculation
+</details>
+
 ---
 
 ## Planned/Future Apps
