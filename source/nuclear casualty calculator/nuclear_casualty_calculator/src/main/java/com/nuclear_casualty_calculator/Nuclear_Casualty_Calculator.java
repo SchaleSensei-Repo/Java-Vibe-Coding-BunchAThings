@@ -38,22 +38,113 @@ public class Nuclear_Casualty_Calculator extends JFrame {
     private static final DecimalFormat pf = new DecimalFormat("0.00%");
     private static final DecimalFormat doseRateFormat = new DecimalFormat("#,##0.000");
 
+    private static final double EFFECTIVE_MSV_PER_MT_PROMPT_LOCAL_MODEL_PARAM = 250; 
+    private static final double FALLOUT_RATE_PER_MT_AT_H1_FACTOR = 1000; 
+    private static final double HYPOTHETICAL_EXPOSURE_RATE_FOR_ACUTE_TABLE = 1000; 
 
-    // Illustrative constant for mSv <-> yield reverse estimation
-    private static final double EFFECTIVE_MSV_PER_MT_PROMPT_LOCAL_MODEL_PARAM = 250; // mSv total effective dose / MT (invented)
-    private static final double FALLOUT_RATE_PER_MT_AT_H1_FACTOR = 1000; // mSv/hr at H+1 per MT in a hot zone (invented)
-    private static final double HYPOTHETICAL_EXPOSURE_RATE_FOR_ACUTE_TABLE = 1000; // mSv/hr for Table 1
+    private static final double EMERGENCY_DOSE_LIMIT_FOR_MAX_EXPOSURE_COLUMN_MSV = 100.0;
+    private static final double EVAC_DOSE_LIMIT_PREPARED_MSV = 100.0;
+    private static final double EVAC_DURATION_PREPARED_HOURS = 3.0;
+    private static final double EVAC_DOSE_LIMIT_UNPREPARED_MSV = 50.0;
+    private static final double EVAC_DURATION_UNPREPARED_HOURS = 2.0;
+    private static final double REDUCED_RISK_OUTDOOR_ACTIVITY_RATE_MSV_HR = 0.01;
+
+    // Preference for showing startup disclaimer
+    private boolean prefShowStartupDisclaimer = true;
+
 
     public Nuclear_Casualty_Calculator() {
         setTitle("Nuclear Casualty Estimator (Illustrative Model)");
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(850, 960); // Adjusted width for wider tables
+
+        // setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); // Keep this or use a WindowListener
+
+    // More explicit shutdown handling
+        addWindowListener(new java.awt.event.WindowAdapter() {
+        @Override
+        public void windowClosing(java.awt.event.WindowEvent windowEvent) {
+            // Perform any cleanup here if necessary (e.g., save final data)
+            System.out.println("Window closing event triggered. Attempting System.exit(0)...");
+            dispose();
+            System.exit(0); // Force exit
+        }
+        });
+
+        //setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setSize(950, 960); 
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
 
-        initComponents();
-        loadSettings();
+        initComponents(); 
+        loadSettings(); 
+        
+        showDisclaimerDialog(false); 
     }
+
+    private void showDisclaimerDialog(boolean isLaunchedFromAboutMenu) {
+        // If it's a startup call AND the preference is to NOT show it, then return.
+        if (!isLaunchedFromAboutMenu && !prefShowStartupDisclaimer) {
+            return; 
+        }
+
+        JPanel panel = new JPanel(new BorderLayout(5, 5));
+        String disclaimerText = "<html><body style='width: 350px;'>"
+            + "<b>Disclaimer & Warning:</b><br><br>"
+            + "This Nuclear Casualty Estimator is a highly simplified and illustrative model. "
+            + "The calculations and outputs are <b>NOT scientifically accurate</b> and should <b>NEVER</b> "
+            + "be used for real-world planning, prediction, decision-making, or to incite fear.<br><br>"
+            + "The subject matter is inherently grim. This tool is provided for conceptual "
+            + "understanding of potential factors in such scenarios and as a programming exercise only."
+            + "<br><br>Use with extreme caution and critical thinking. No liability is assumed for any "
+            + "interpretation or use of this illustrative tool.</html>";
+        JLabel messageLabel = new JLabel(disclaimerText);
+        panel.add(messageLabel, BorderLayout.CENTER);
+
+        JCheckBox dontShowAgainCheckbox = new JCheckBox("Do not show this message again at startup");
+        dontShowAgainCheckbox.setSelected(!prefShowStartupDisclaimer); // Reflect current preference: checked if pref is false
+        
+        // Always show checkbox if launched from "About" or if pref is currently true (meaning user hasn't opted out yet)
+        if (isLaunchedFromAboutMenu || prefShowStartupDisclaimer) {
+            panel.add(dontShowAgainCheckbox, BorderLayout.SOUTH);
+        }
+
+        String dialogTitle = isLaunchedFromAboutMenu ? "About This Estimator" : "Important Disclaimer";
+
+        // Inside showDisclaimerDialog, before or after JOptionPane
+        java.awt.Toolkit.getDefaultToolkit().beep();
+
+        JOptionPane.showMessageDialog(this, panel, dialogTitle, JOptionPane.WARNING_MESSAGE);
+
+        // Update preference based on checkbox (only if it was visible and thus interactable) and save it immediately
+        if (isLaunchedFromAboutMenu || prefShowStartupDisclaimer) { 
+            boolean newPreferenceValueForShowing = !dontShowAgainCheckbox.isSelected(); // if checkbox is selected, pref for showing is false
+            if (this.prefShowStartupDisclaimer != newPreferenceValueForShowing) {
+                this.prefShowStartupDisclaimer = newPreferenceValueForShowing;
+                saveDisclaimerPreferenceOnly();
+            }
+        }
+    }
+    
+    private void saveDisclaimerPreferenceOnly() {
+        Properties props = new Properties();
+        File settingsFile = new File(SETTINGS_FILE);
+
+        if (settingsFile.exists()) {
+            try (InputStream input = new FileInputStream(settingsFile)) {
+                props.load(input);
+            } catch (IOException ex) {
+                System.err.println("Error loading existing settings to save disclaimer pref: " + ex.getMessage());
+            }
+        }
+        
+        props.setProperty("showStartupDisclaimer", String.valueOf(prefShowStartupDisclaimer));
+
+        try (OutputStream output = new FileOutputStream(SETTINGS_FILE)) {
+            props.store(output, "Nuclear Calculator Settings");
+        } catch (IOException io) {
+            System.err.println("Error saving disclaimer preference: " + io.getMessage());
+        }
+    }
+
 
     private void initComponents() {
         JPanel inputPanel = new JPanel();
@@ -82,7 +173,7 @@ public class Nuclear_Casualty_Calculator extends JFrame {
         inputTypePanel.add(warheadInputRadio);
         inputTypePanel.add(radiationInputRadio);
         inputPanel.add(inputTypePanel, gbc);
-        gbc.gridwidth = 1; // Reset gridwidth
+        gbc.gridwidth = 1; 
 
         ActionListener inputTypeListener = e -> updateInputPanels();
         warheadInputRadio.addActionListener(inputTypeListener);
@@ -181,19 +272,22 @@ public class Nuclear_Casualty_Calculator extends JFrame {
         JButton saveButton = new JButton("Save Settings");
         JButton loadButton = new JButton("Load Settings");
         JButton defaultsButton = new JButton("Restore Defaults");
+        JButton aboutButton = new JButton("About"); 
 
 
         calculateButton.addActionListener(e -> performCalculation());
         saveButton.addActionListener(e -> saveSettings());
         loadButton.addActionListener(e -> loadSettings());
         defaultsButton.addActionListener(e -> restoreDefaultSettings());
+        aboutButton.addActionListener(e -> showDisclaimerDialog(true)); 
 
         buttonPanel.add(calculateButton);
         buttonPanel.add(saveButton);
         buttonPanel.add(loadButton);
         buttonPanel.add(defaultsButton);
+        buttonPanel.add(aboutButton); 
 
-        resultsArea = new JTextArea(40, 95); // Adjusted columns for wider tables
+        resultsArea = new JTextArea(45, 115); 
         resultsArea.setEditable(false);
         resultsArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
         JScrollPane scrollPane = new JScrollPane(resultsArea);
@@ -214,8 +308,10 @@ public class Nuclear_Casualty_Calculator extends JFrame {
         radiationLevelField.setText("1000");
         nuclearWinterCheckbox.setSelected(false);
         humanitarianAidCheckbox.setSelected(false);
+        // NOTE: Disclaimer preference is NOT reset by "Restore Defaults"
+        // If user wants to see it again at startup, they can re-enable via About dialog
         updateInputPanels(); 
-        resultsArea.setText("Input values restored to defaults.\n");
+        resultsArea.setText("Input values restored to defaults.\n(Startup disclaimer preference remains unchanged.)\n");
     }
 
     private void updateInputPanels() {
@@ -257,10 +353,9 @@ public class Nuclear_Casualty_Calculator extends JFrame {
         return "----------------------------------+--------------+-------------+-----------------\n";
     }
 
-    // Helper class for Acute Radiation Effects Table
     private static class AcuteRadiationDoseEffect {
-        double minDoseSv; // Min dose for this range (Sv)
-        double maxDoseSv; // Max dose for this range (Sv)
+        double minDoseSv; 
+        double maxDoseSv; 
         String effectDescription;
 
         public AcuteRadiationDoseEffect(double minDoseSv, double maxDoseSv, String effectDescription) {
@@ -271,7 +366,7 @@ public class Nuclear_Casualty_Calculator extends JFrame {
 
         public String getDoseRangeMsv() {
             if (maxDoseSv == Double.MAX_VALUE) return String.format("> %.0f mSv (> %.0f Sv)", minDoseSv * 1000, minDoseSv);
-            if (minDoseSv == 0 && maxDoseSv == 0.25) return String.format("%.0f - %.0f mSv (0 - %.2f Sv)", minDoseSv*1000, maxDoseSv * 1000, maxDoseSv); // Special for first entry for alignment
+            if (minDoseSv == 0 && maxDoseSv == 0.25) return String.format("%.0f - %.0f mSv (0 - %.2f Sv)", minDoseSv*1000, maxDoseSv * 1000, maxDoseSv);
             return String.format("%.0f - %.0f mSv (%.2f - %.1f Sv)", minDoseSv * 1000, maxDoseSv * 1000, minDoseSv, maxDoseSv);
         }
     }
@@ -279,12 +374,12 @@ public class Nuclear_Casualty_Calculator extends JFrame {
     private List<AcuteRadiationDoseEffect> getAcuteRadiationEffectsData() {
         List<AcuteRadiationDoseEffect> effects = new ArrayList<>();
         effects.add(new AcuteRadiationDoseEffect(0, 0.25, "Few/no immediate symptoms. Possible slight blood changes. Increased long-term cancer risk."));
-        effects.add(new AcuteRadiationDoseEffect(0.251, 1.0, "Mild: Nausea, vomiting in 10-50% within 3-6 hrs, lasting <24h. Fatigue. Temporary drop in lymphocytes. Full recovery usual."));
-        effects.add(new AcuteRadiationDoseEffect(1.001, 2.0, "Moderate: Nausea, vomiting in 50-90% within 2-4 hrs, lasting 1-2 days. Hair loss (~2wks). Significant blood cell drops. Medical attention advised. Recovery likely."));
-        effects.add(new AcuteRadiationDoseEffect(2.001, 4.0, "Severe: Nausea/vomiting <1hr (70-100%), diarrhea, fever. Severe hair loss, hemorrhage, infection risk. Hospitalization essential. ~15-50% mortality in 30d without treatment."));
-        effects.add(new AcuteRadiationDoseEffect(4.001, 6.0, "Very Severe: Symptoms rapid. High mortality (~50-90% in 2-4wks) even with intensive care (LD50/30 range). Bone marrow destruction."));
-        effects.add(new AcuteRadiationDoseEffect(6.001, 10.0, "Critical: Symptoms immediate/severe. Survival unlikely (~90-100% mortality). Gastrointestinal/cardiovascular collapse."));
-        effects.add(new AcuteRadiationDoseEffect(10.001, Double.MAX_VALUE, "Lethal: Incapacitation (minutes-hour). Death (hours-2 days). Central Nervous System syndrome."));
+        effects.add(new AcuteRadiationDoseEffect(0.251, 1.0, "Mild: Nausea, vomiting in 10-50% (3-6h), <24h. Fatigue. Temp. lymphocyte drop. Recovery usual."));
+        effects.add(new AcuteRadiationDoseEffect(1.001, 2.0, "Moderate: Nausea, vomiting 50-90% (2-4h), 1-2d. Hair loss (~2wks). Blood cell drops. Medical attention advised."));
+        effects.add(new AcuteRadiationDoseEffect(2.001, 4.0, "Severe: Nausea/vomit <1h (70-100%), diarrhea, fever. Hair loss, hemorrhage, infection. Hospital vital. ~15-50% mortality (30d w/o care)."));
+        effects.add(new AcuteRadiationDoseEffect(4.001, 6.0, "Very Severe: Symptoms rapid. High mortality (~50-90% in 2-4wks) even w/ care (LD50/30). Bone marrow destruction."));
+        effects.add(new AcuteRadiationDoseEffect(6.001, 10.0, "Critical: Symptoms immediate/severe. Survival unlikely (~90-100% mortality). GI/Cardiovascular collapse."));
+        effects.add(new AcuteRadiationDoseEffect(10.001, Double.MAX_VALUE, "Lethal: Incapacitation (mins-hr). Death (hrs-2 days). Central Nervous System syndrome."));
         return effects;
     }
     
@@ -295,14 +390,15 @@ public class Nuclear_Casualty_Calculator extends JFrame {
         String headerCol1 = "Dose Range";
         String headerCol2 = "Time to Max Dose";
         String headerCol3 = "Typical Acute Effects on Humans";
-        int col1Width = 36; // Increased width for Dose Range
+        int col1Width = 36; 
         int col2Width = 20;
+        int col3Width = 90;
 
         String dashes1 = "-".repeat(col1Width);
         String dashes2 = "-".repeat(col2Width);
-        String dashes3 = "-".repeat(Math.max(headerCol3.length(), 45)); // Adjust length for effect header
+        String dashes3 = "-".repeat(col3Width);
 
-        sb.append(String.format("%s+%s+%s\n", dashes1, dashes2, dashes3).replace(" ", "-")); // More solid line
+        sb.append(String.format("%s+%s+%s\n", dashes1, dashes2, dashes3).replace(" ", "-"));
         sb.append(String.format("%-" + col1Width + "s | %-" + col2Width + "s | %s\n", headerCol1, headerCol2, headerCol3));
         sb.append(String.format("%s+%s+%s\n", dashes1, dashes2, dashes3).replace(" ", "-"));
 
@@ -312,7 +408,7 @@ public class Nuclear_Casualty_Calculator extends JFrame {
             String timeStr;
             if (effect.maxDoseSv == Double.MAX_VALUE) {
                 timeStr = String.format("> %.1f hrs", effect.minDoseSv * 1000 / HYPOTHETICAL_EXPOSURE_RATE_FOR_ACUTE_TABLE);
-            } else if (timeToMaxDoseHours < 0.01) { // less than ~30 seconds
+            } else if (timeToMaxDoseHours < 0.016) { 
                  timeStr = String.format("< 1 min");
             } else if (timeToMaxDoseHours < 1.0) {
                 timeStr = String.format("%.0f mins", timeToMaxDoseHours * 60);
@@ -324,35 +420,80 @@ public class Nuclear_Casualty_Calculator extends JFrame {
         sb.append(String.format("%s+%s+%s\n", dashes1, dashes2, dashes3).replace(" ", "-"));
         sb.append("*Note: Individual responses vary. Medical treatment can alter outcomes. This is simplified.\n");
     }
+    
+    private String formatTimeDuration(double totalHours) {
+        if (totalHours < 0) return "N/A";
+        if (totalHours == Double.POSITIVE_INFINITY || totalHours > 876000) return ">100 years";
+        if (totalHours < (1.0/60.0)) return "< 1 min"; 
+
+        int days = (int) (totalHours / 24);
+        double remainingHours = totalHours % 24;
+        int hours = (int) remainingHours;
+        int minutes = (int) ((remainingHours - hours) * 60);
+
+        StringBuilder sbTime = new StringBuilder();
+        if (days > 0) {
+            sbTime.append(days).append("d ");
+            if (days > 365 * 2) { 
+                 return String.format("~%.1f years", totalHours / 8760.0);
+            }
+             if (days > 7 && hours == 0 && minutes == 0) return sbTime.toString().trim(); 
+        }
+        if (hours > 0 || days > 0) { 
+             sbTime.append(hours).append("h ");
+        }
+        sbTime.append(minutes).append("m");
+        return sbTime.toString().trim();
+    }
+
+    private String getNotesAndRecommendations(double currentRateMSvHr) {
+        StringBuilder notes = new StringBuilder();
+        if (currentRateMSvHr > 100) { 
+            notes.append("P: DEEPEST SHELTER. NO OUTDOOR. Monitor comms. / U: ABSOLUTE MAX SHELTER. Improvise. Pray.");
+        } else if (currentRateMSvHr > 10) { 
+            notes.append("P: Stay in shelter. Min. essential tasks if shielded & brief. / U: Max shelter. Avoid all exposure.");
+        } else if (currentRateMSvHr > 1) { 
+            notes.append("P: Limit exposure. Short, necessary outdoor tasks w/ PPE. / U: Strict shelter. Risk calc for any exit.");
+        } else if (currentRateMSvHr > 0.1) { 
+            notes.append("P: Caution outdoors. PPE. Rotate personnel for tasks. / U: Very brief exit if CRITICAL. High risk.");
+        } else if (currentRateMSvHr > REDUCED_RISK_OUTDOOR_ACTIVITY_RATE_MSV_HR) { 
+             notes.append("P: Outdoor tasks w/ caution & PPE. Monitor dose. / U: Brief exits for essentials, minimize time.");
+        } else { 
+             notes.append("P: 'Reduced Risk' but long-term exposure adds up. Monitor. / U: Still elevated. Limit time outdoors.");
+        }
+        return notes.toString();
+    }
 
     private void generateFalloutDecayTable(StringBuilder sb, double initialFalloutRateH1, boolean isPeriodicScenario) {
         sb.append("\nIllustrative Fallout Decay & Dose Rate (Approximate t^-1.2 rule):\n");
-        if (initialFalloutRateH1 <= 0.00001) { // Check for effectively zero rate
-            sb.append("  (No significant fallout generating event modeled for this table / rate is effectively zero)\n");
+        if (initialFalloutRateH1 <= 0.000001) {
+            sb.append("  (Initial fallout rate is effectively zero; no decay table generated.)\n");
             return;
         }
         sb.append(String.format("  (Based on an estimated initial HOT ZONE dose rate of %,.1f mSv/hr at H+1 hour)\n", initialFalloutRateH1));
 
-        String headerCol1 = "Time Since Det.";
-        String headerCol2 = "Decay Factor";
-        String headerCol3 = "Approx. Dose Rate (mSv/hr)";
-        int col1Width = 18;
-        int col2Width = 15;
+        String headerCol1 = "Time Since Det."; 
+        String headerCol2 = "Decay Factor";   
+        String headerCol3 = "Est. Rad.Level(mSv/hr)"; 
+        String headerCol4 = String.format("Max Safe Exp.(%smSv)", df.format(EMERGENCY_DOSE_LIMIT_FOR_MAX_EXPOSURE_COLUMN_MSV)); 
+        String headerCol5 = "Notes & Recs (P:Prepared U:Unprepared)"; 
+
+        int col1W = 20, col2W = 15, col3W = 25, col4W = 28;
+        int col5W = 60; 
         
-        String dashes1 = "-".repeat(col1Width);
-        String dashes2 = "-".repeat(col2Width);
-        String dashes3 = "-".repeat(headerCol3.length());
+        String dashes1 = "-".repeat(col1W);
+        String dashes2 = "-".repeat(col2W);
+        String dashes3 = "-".repeat(col3W);
+        String dashes4 = "-".repeat(col4W);
+        String dashes5 = "-".repeat(col5W);
 
-        sb.append(String.format("%s+%s+%s\n", dashes1, dashes2, dashes3).replace(" ", "-"));
-        sb.append(String.format("%-" + col1Width + "s | %-" + col2Width + "s | %s\n", headerCol1, headerCol2, headerCol3));
-        sb.append(String.format("%s+%s+%s\n", dashes1, dashes2, dashes3).replace(" ", "-"));
+        sb.append(String.format("%s+%s+%s+%s+%s\n", dashes1, dashes2, dashes3, dashes4, dashes5));
+        sb.append(String.format("%-"+col1W+"s | %-"+col2W+"s | %-"+col3W+"s | %-"+col4W+"s | %s\n", 
+                                headerCol1, headerCol2, headerCol3, headerCol4, headerCol5));
+        sb.append(String.format("%s+%s+%s+%s+%s\n", dashes1, dashes2, dashes3, dashes4, dashes5));
 
-        double[] timePointsHours = {1, 7, 49, (49*7), (343*7), (2401*7), 8760}; // H+1h, H+7h, H+~2d, H+~2w, H+~3.5m, H+~1yr(approx)
-        String[] timeLabels = {"H+1 Hour", "H+7 Hours", "H+2 Days (49h)", "H+2 Weeks (343h)", "H+3.5 Months (2401h)", "H+~1 Year (approx)"};
-        // Corrected labels for more clarity on powers of 7
-        timePointsHours = new double[]{1, 7, 7*7, 7*7*7, 7*7*7*7, 7*7*7*7*7, 8760}; // H+1h, H+7h, H+49h, H+343h, H+2401h, H+16807h, H+1yr
-        timeLabels = new String[]{"H+1 Hour", "H+7 Hours", "H+49 Hours (~2d)", "H+343 Hours (~2w)", "H+2401 Hours (~3.5m)", "H+16807 Hrs (~23m)", "H+1 Year (8760h)"};
-
+        double[] timePointsHours = {1, 2, 4, 7, 12, 24, 48, 7*24, 14*24, 30*24, 90*24, 180*24, 365*24}; 
+        String[] timeLabels = {"H+1h", "H+2h", "H+4h", "H+7h", "H+12h", "H+1 Day", "H+2 Days", "H+1 Week", "H+2 Weeks", "H+1 Month", "H+3 Months", "H+6 Months", "H+1 Year"};
 
         for (int i = 0; i < timePointsHours.length; i++) {
             double t = timePointsHours[i];
@@ -360,18 +501,55 @@ public class Nuclear_Casualty_Calculator extends JFrame {
             if (t == 1) decayFactor = 1.0; 
 
             double currentRate = initialFalloutRateH1 * decayFactor;
-            sb.append(String.format("%-" + col1Width + "s | %-" + col2Width + ".4f | %s\n", 
+            String maxSafeExpTimeStr = "Instantly Overlimit";
+            if (currentRate > 0.000001) { 
+                 maxSafeExpTimeStr = formatTimeDuration(EMERGENCY_DOSE_LIMIT_FOR_MAX_EXPOSURE_COLUMN_MSV / currentRate);
+            } else {
+                maxSafeExpTimeStr = ">Very Long";
+            }
+            
+            String notes = getNotesAndRecommendations(currentRate);
+
+            sb.append(String.format("%-"+col1W+"s | %-"+col2W+".4f | %-"+col3W+"s | %-"+col4W+"s | %s\n", 
                                     timeLabels[i], 
                                     decayFactor, 
-                                    doseRateFormat.format(currentRate)));
+                                    doseRateFormat.format(currentRate),
+                                    maxSafeExpTimeStr,
+                                    notes
+                                    ));
         }
-        sb.append(String.format("%s+%s+%s\n", dashes1, dashes2, dashes3).replace(" ", "-"));
-        sb.append("*Note: Represents ideal decay in a heavily affected, undisturbed area.\n");
-        sb.append("  Actual rates vary (distance, shielding, weather, ground type).\n");
+        sb.append(String.format("%s+%s+%s+%s+%s\n", dashes1, dashes2, dashes3, dashes4, dashes5));
+        sb.append("* Max Safe Exp. is illustrative time to reach 100 mSv at current rate. Does NOT imply safety.\n");
+        sb.append("* Notes are general. P: Prepared (good shelter, supplies, PPE). U: Unprepared.\n");
+        sb.append("* Model uses t^-1.2 decay. Actual decay is complex. Shielding is critical.\n");
         if (isPeriodicScenario) {
-            sb.append("  Periodic strikes would create NEW fallout, re-contaminating areas.\n");
+            sb.append("* PERIODIC STRIKES would re-contaminate, making these decay projections unreliable over time.\n");
         }
-        sb.append("  Long-term accumulated dose requires integration of rates over exposure time.\n");
+        
+        sb.append("\nCalculated Safe Outdoor Timings (Highly Illustrative):\n");
+        sb.append("----------------------------------------------------\n");
+
+        if (initialFalloutRateH1 > 0.000001) {
+            double targetRatePrepared = EVAC_DOSE_LIMIT_PREPARED_MSV / EVAC_DURATION_PREPARED_HOURS;
+            double tEvacPrepared = Math.pow(initialFalloutRateH1 / targetRatePrepared, 1.0/1.2);
+            sb.append(String.format("Est. Earliest Evac Window (Prepared - Target: <%s mSv in %s hrs): %s\n", 
+                                    df.format(EVAC_DOSE_LIMIT_PREPARED_MSV), df.format(EVAC_DURATION_PREPARED_HOURS), formatTimeDuration(tEvacPrepared)));
+
+            double targetRateUnprepared = EVAC_DOSE_LIMIT_UNPREPARED_MSV / EVAC_DURATION_UNPREPARED_HOURS;
+            double tEvacUnprepared = Math.pow(initialFalloutRateH1 / targetRateUnprepared, 1.0/1.2);
+            sb.append(String.format("Est. Earliest Evac Window (Unprepared - Target: <%s mSv in %s hrs): %s\n", 
+                                    df.format(EVAC_DOSE_LIMIT_UNPREPARED_MSV), df.format(EVAC_DURATION_UNPREPARED_HOURS), formatTimeDuration(tEvacUnprepared)));
+
+            double tReducedRisk = Math.pow(initialFalloutRateH1 / REDUCED_RISK_OUTDOOR_ACTIVITY_RATE_MSV_HR, 1.0/1.2);
+            sb.append(String.format("Est. Time for 'Reduced Risk' Outdoor Activity (Rate ~%s mSv/hr): %s\n", 
+                                    doseRateFormat.format(REDUCED_RISK_OUTDOOR_ACTIVITY_RATE_MSV_HR), formatTimeDuration(tReducedRisk)));
+        } else {
+             sb.append("  (Initial fallout rate too low for meaningful 'earliest time' calculations.)\n");
+        }
+        sb.append("* These are THEORETICAL minimum times. Actual decisions require real-time measurements & expert advice.\n");
+        if (isPeriodicScenario) {
+            sb.append("* WARNING: Periodic strikes render these 'earliest time' calculations highly UNRELIABLE after the initial event.\n");
+        }
     }
 
     private void performCalculation() {
@@ -492,7 +670,7 @@ public class Nuclear_Casualty_Calculator extends JFrame {
                 sb.append(String.format("  Assumed Average Prompt/Early Effective Radiation Exposure: %.0f mSv\n\n", radiationMSV));
                 
                 totalYieldMT_forFalloutDecayTable = radiationMSV / EFFECTIVE_MSV_PER_MT_PROMPT_LOCAL_MODEL_PARAM;
-                if (totalYieldMT_forFalloutDecayTable < 0.00001) totalYieldMT_forFalloutDecayTable = 0; // Effectively zero for table if too small
+                if (totalYieldMT_forFalloutDecayTable < 0.00001) totalYieldMT_forFalloutDecayTable = 0; 
 
                 double refPayloadKT = 1000;
                 try {
@@ -536,7 +714,6 @@ public class Nuclear_Casualty_Calculator extends JFrame {
             // --- Main Fallout Casualties ---
             if (currentPopulation > 0) {
                 double falloutDeathFactor = 0.0;
-                // Use totalYieldMT_forFalloutDecayTable as it's consistently derived total yield for fallout context
                 falloutDeathFactor = Math.min(0.75, totalYieldMT_forFalloutDecayTable * 0.08); 
                 
                 if (hasHumanitarianAid) {
@@ -600,24 +777,21 @@ public class Nuclear_Casualty_Calculator extends JFrame {
             sb.append(formatTableRow("Initial Population", "", "", df.format(totalPopulation)));
 
             if (warheadInputRadio.isSelected()) {
-                // Determine initial impact yield used for this specific calculation section
-                double initialImpactYieldMT_forTableSection = totalYieldMT_forFalloutDecayTable; // Default to total yield
+                double initialImpactYieldMT_forTableSection = totalYieldMT_forFalloutDecayTable;
                 if (isPeriodicStrikeScenario && initialWarheadsForCalc < Integer.parseInt(warheadQuantityField.getText())) {
-                    // If periodic, initial impact calculation for initial deaths uses only initial warheads
                     initialImpactYieldMT_forTableSection = (initialWarheadsForCalc * payloadKT_perWarhead / 1000.0);
                 }
                 long directBlastThermalDeaths = (long) (totalPopulation * Math.min(0.90, initialImpactYieldMT_forTableSection * 0.20));
                 long injuriesLeadingToDeath = totalInitialDeaths - directBlastThermalDeaths;
-                if (injuriesLeadingToDeath < 0) injuriesLeadingToDeath = 0; // Ensure not negative
+                if (injuriesLeadingToDeath < 0) injuriesLeadingToDeath = 0;
 
                 sb.append(formatTableRow("  Direct Blast/Thermal", df.format(directBlastThermalDeaths), pf.format((double) directBlastThermalDeaths / totalPopulation), ""));
                 sb.append(formatTableRow("  From Severe Injuries", df.format(injuriesLeadingToDeath), pf.format((double) injuriesLeadingToDeath / totalPopulation), ""));
             } else {
-                // For radiation input, base initial deaths on total population and input mSv factors
                 double inputMSV = Double.parseDouble(radiationLevelField.getText());
                 long directRadDeaths = (long) (totalPopulation * Math.min(0.95, inputMSV / 5000.0));
                 long deathsFromSickness = totalInitialDeaths - directRadDeaths;
-                if (deathsFromSickness < 0) deathsFromSickness = 0; // Ensure not negative
+                if (deathsFromSickness < 0) deathsFromSickness = 0;
 
                 sb.append(formatTableRow("  Direct Radiation Deaths", df.format(directRadDeaths), pf.format((double) directRadDeaths / totalPopulation), ""));
                 sb.append(formatTableRow("  From Severe Sickness", df.format(deathsFromSickness), pf.format((double) deathsFromSickness / totalPopulation), ""));
@@ -677,6 +851,8 @@ public class Nuclear_Casualty_Calculator extends JFrame {
         props.setProperty("radiationLevel", radiationLevelField.getText());
         props.setProperty("nuclearWinter", String.valueOf(nuclearWinterCheckbox.isSelected()));
         props.setProperty("humanitarianAid", String.valueOf(humanitarianAidCheckbox.isSelected()));
+        props.setProperty("showStartupDisclaimer", String.valueOf(this.prefShowStartupDisclaimer)); 
+
 
         try (OutputStream output = new FileOutputStream(SETTINGS_FILE)) {
             props.store(output, "Nuclear Calculator Settings");
@@ -702,6 +878,7 @@ public class Nuclear_Casualty_Calculator extends JFrame {
             radiationLevelField.setText("1000");
             nuclearWinterCheckbox.setSelected(false);
             humanitarianAidCheckbox.setSelected(false);
+            this.prefShowStartupDisclaimer = true; 
             updateInputPanels(); 
         };
 
@@ -738,6 +915,7 @@ public class Nuclear_Casualty_Calculator extends JFrame {
             radiationLevelField.setText(props.getProperty("radiationLevel", "1000"));
             nuclearWinterCheckbox.setSelected(Boolean.parseBoolean(props.getProperty("nuclearWinter", "false")));
             humanitarianAidCheckbox.setSelected(Boolean.parseBoolean(props.getProperty("humanitarianAid", "false")));
+            this.prefShowStartupDisclaimer = Boolean.parseBoolean(props.getProperty("showStartupDisclaimer", "true"));
             
             resultsArea.append("Settings loaded from " + SETTINGS_FILE + "\n");
 
