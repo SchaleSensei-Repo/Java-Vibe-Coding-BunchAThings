@@ -9,7 +9,7 @@ pipeline {
         OUTPUT_DIR = 'out'
         RELEASE_PACKAGE_DIR = 'release_package'
         TEMP_RELEASE_STAGING_DIR = 'temp_release_staging'
-        MAIN_HUB_JAR_NAME = 'Jar_Main_Hub.jar' // Adjusted for space
+        MAIN_HUB_JAR_NAME = 'Jar_Main_Hub.jar'
         GITHUB_REPO = 'SchaleSensei-Repo/Java-Vibe-Coding-BunchAThings'
         GITHUB_CREDS = 'GITHUB_PAT'
         RELEASES_TO_KEEP = 3
@@ -83,176 +83,298 @@ pipeline {
                     bat "if exist \"${OUTPUT_DIR}\" rmdir /s /q \"${OUTPUT_DIR}\""
                     bat "mkdir \"${OUTPUT_DIR}\""
 
+                    // PowerShell script to find ALL Java files grouped by module, and also identify main files
                     def psScriptContent = '''
                         $ProgressPreference = 'SilentlyContinue';
                         $WarningPreference = 'SilentlyContinue';
                         $VerbosePreference = 'SilentlyContinue';
                         $InformationPreference = 'SilentlyContinue';
                         $ErrorActionPreference = 'Stop';
-                        $javaFilePaths = Get-ChildItem -Recurse -Filter *.java |
-                            Where-Object { Select-String -Path $_.FullName -Pattern 'public static void main' -Quiet } |
-                            ForEach-Object { $_.FullName };
-                        if ($null -ne $javaFilePaths -and $javaFilePaths.Count -gt 0) {
-                            [System.IO.File]::WriteAllLines('main_java_files.txt', $javaFilePaths, [System.Text.UTF8Encoding]::new($false))
+
+                        $WorkspacePath = $env:WORKSPACE
+
+                        # Determine module roots. Assumes modules are subdirectories under a 'source' directory,
+                        # or direct subdirectories of workspace if 'source' doesn't exist and they contain 'src'.
+                        $potentialModuleRoots = @()
+                        $sourceDirCandidate = Join-Path $WorkspacePath "source"
+                        if (Test-Path $sourceDirCandidate -PathType Container) {
+                            Get-ChildItem -Path $sourceDirCandidate -Directory | ForEach-Object { $potentialModuleRoots += $_.FullName }
                         } else {
-                            Write-Host 'No Java files with a main method were found.';
+                            Get-ChildItem -Path $WorkspacePath -Directory | Where-Object { Test-Path (Join-Path $_.FullName "src") -PathType Container } | ForEach-Object { $potentialModuleRoots += $_.FullName }
+                        }
+
+                        $moduleRoots = $potentialModuleRoots | ForEach-Object {
+                            $moduleRootPath = $_
+                            # A directory is a module root if it contains src/main/java, src/java, or src with .java files
+                            if (Test-Path (Join-Path $moduleRootPath "src\\main\\java") -PathType Container -or `
+                                Test-Path (Join-Path $moduleRootPath "src\\java") -PathType Container -or `
+                                (Test-Path (Join-Path $moduleRootPath "src") -PathType Container -and (Get-ChildItem (Join-Path $moduleRootPath "src") -Recurse -Filter *.java -ErrorAction SilentlyContinue).Count -gt 0) ) {
+                                $moduleRootPath
+                            }
+                        } | Get-Unique
+
+                        $javaFilesByModule = @{}
+                        Write-Host "DEBUG [BuildApps PS]: Found module roots: $($moduleRoots -join '; ')"
+
+                        foreach ($rootPathAbs in $moduleRoots) {
+                            $allJavaFilesInModule = @()
+                            $srcMainJavaPath = Join-Path -Path $rootPathAbs -ChildPath 'src\\main\\java'
+                            $srcJavaPath = Join-Path -Path $rootPathAbs -ChildPath 'src\\java'
+                            $srcPath = Join-Path -Path $rootPathAbs -ChildPath 'src'
+
+                            if (Test-Path $srcMainJavaPath -PathType Container) {
+                                $allJavaFilesInModule += Get-ChildItem -Path $srcMainJavaPath -Recurse -Filter *.java -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+                            } elseif (Test-Path $srcJavaPath -PathType Container) {
+                                $allJavaFilesInModule += Get-ChildItem -Path $srcJavaPath -Recurse -Filter *.java -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+                            } elseif (Test-Path $srcPath -PathType Container) {
+                                $allJavaFilesInModule += Get-ChildItem -Path $srcPath -Recurse -Filter *.java -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+                            }
+
+                            if ($allJavaFilesInModule.Count -gt 0) {
+                                $relativeRoot = $rootPathAbs.Substring($WorkspacePath.Length).TrimStart('\\').TrimStart('/');
+                                $javaFilesByModule[$relativeRoot] = @($allJavaFilesInModule | Get-Unique)
+                                Write-Host "DEBUG [BuildApps PS]: Module '$relativeRoot' identified with $($allJavaFilesInModule.Count) java files."
+                            } else {
+                                Write-Host "DEBUG [BuildApps PS]: Module '$($rootPathAbs.Substring($WorkspacePath.Length).TrimStart('\\').TrimStart('/'))' has no java files found in expected src locations (src/main/java, src/java, or src/)."
+                            }
+                        }
+
+                        # Find main files
+                        $mainJavaFilePaths = Get-ChildItem -Path $WorkspacePath -Recurse -Filter *.java -ErrorAction SilentlyContinue |
+                            Where-Object { Select-String -Path $_.FullName -Pattern 'public static void main' -Quiet -ErrorAction SilentlyContinue } |
+                            ForEach-Object { $_.FullName };
+                        if ($null -ne $mainJavaFilePaths -and $mainJavaFilePaths.Count -gt 0) {
+                            [System.IO.File]::WriteAllLines('main_java_files.txt', $mainJavaFilePaths, [System.Text.UTF8Encoding]::new($false))
+                            Write-Host "DEBUG [BuildApps PS]: Found $($mainJavaFilePaths.Count) main method files. List saved to main_java_files.txt"
+                        } else {
+                            Write-Host 'DEBUG [BuildApps PS]: No Java files with a main method were found.';
                             Set-Content -Path 'main_java_files.txt' -Value ''
                         }
+                        return $javaFilesByModule | ConvertTo-Json -Depth 5
                     '''.stripIndent()
 
                     byte[] scriptBytes = psScriptContent.getBytes("UTF-16LE")
                     def encodedCommand = scriptBytes.encodeBase64().toString()
-                    // Temporarily remove stream suppressions to see PowerShell errors for main file discovery
-                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
 
+                    def psCommandToExecute = "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null"
+                    def psOutputJson = bat(script: psCommandToExecute, returnStdout: true).trim()
+                    echo "DEBUG: Raw psOutputJson from PowerShell (Build Apps): '${psOutputJson}'"
 
-                    echo "Listing workspace root contents:"
-                    bat "dir /b"
-
-                    def javaFileContent = readFile(file: 'main_java_files.txt', encoding: 'UTF-8').trim()
-                    if (javaFileContent.isEmpty()) {
-                        error "No Java files with a main method were found (main_java_files.txt is empty or PowerShell script failed silently)."
+                    def jsonStart = psOutputJson.indexOf('{')
+                    def jsonEnd = psOutputJson.lastIndexOf('}')
+                    def allJavaFilesByModule = [:]
+                    if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart) {
+                        def cleanJsonString = psOutputJson.substring(jsonStart, jsonEnd + 1)
+                        echo "DEBUG: cleanJsonString to be parsed (Build Apps): '${cleanJsonString}'"
+                        try {
+                            allJavaFilesByModule = readJSON(text: cleanJsonString)
+                        } catch (e) {
+                            echo "ERROR: Failed to parse JSON from PowerShell (Build Apps): ${e.getMessage()}. JSON was: '${cleanJsonString}'"
+                            allJavaFilesByModule = [:] // Ensure it's an empty map
+                        }
+                    } else {
+                         echo "WARNING: Could not extract JSON from PowerShell output (Build Apps): '${psOutputJson}'. Module-aware compilation might fail."
+                    }
+                    if (allJavaFilesByModule.isEmpty()){
+                        echo "WARNING: No modules with Java files were identified by PowerShell. Compilation will likely fail if main files exist."
                     }
 
-                    def javaFiles = javaFileContent.split("\\r?\\n")
-                        .collect { it.trim() }
-                        .findAll { it }
-
-                    if (javaFiles.isEmpty()) {
+                    def mainFileContent = readFile(file: 'main_java_files.txt', encoding: 'UTF-8').trim()
+                    if (mainFileContent.isEmpty()) {
+                        error "No Java files with a main method were found (main_java_files.txt is empty)."
+                    }
+                    def mainMethodFiles = mainFileContent.split("\\r?\\n").collect { it.trim() }.findAll { it }
+                    if (mainMethodFiles.isEmpty()) {
                         error "No Java files with a main method were found after processing main_java_files.txt."
                     }
 
-                    def rootJarApps = ['AppMainRoot']
+                    def rootJarApps = ['AppMainRoot'] // This seems to be for a specific app, adjust if Jar_Main_Hub should be root
                     def dependencyJars = []
-                    def workspacePath = env.WORKSPACE
-                    def absoluteLibsDirPath = "${workspacePath}\\${env.LIBS_DIR_PATH}".replace('/', File.separator)
-
-                    echo "DEBUG: Workspace path: '${workspacePath}'"
-                    echo "DEBUG: LIBS_DIR_PATH from environment: '${env.LIBS_DIR_PATH}'"
-                    echo "DEBUG: Calculated absolute path for libs directory: '${absoluteLibsDirPath}'"
+                    def workspacePath = env.WORKSPACE.replace('\\','/') // Use forward slashes for Groovy logic
+                    def absoluteLibsDirPath = "${workspacePath}/${env.LIBS_DIR_PATH}".replace('/', File.separator)
 
                     if (env.LIBS_DIR_PATH) {
                        def libsDir = new File(absoluteLibsDirPath)
                        if (libsDir.isDirectory()) {
-                           echo "SUCCESS: '${absoluteLibsDirPath}' is a directory. Listing its contents via 'bat dir':"
-                           bat "dir \"${absoluteLibsDirPath}\""
                            File[] filesInLibsDir = libsDir.listFiles()
                            if (filesInLibsDir != null) {
                                for (File f : filesInLibsDir) {
                                    if (f.isFile() && f.getName().toLowerCase().endsWith(".jar")) {
                                        dependencyJars.add(f.getAbsolutePath().replace('/', '\\'))
-                                       echo "DEBUG: Found dependency JAR: ${f.getAbsolutePath()}"
-                                   } else if (f.isFile()) {
-                                       echo "DEBUG: Ignored non-JAR file in libs directory: ${f.getName()}"
                                    }
                                }
-                           } else {
-                               echo "WARNING: listFiles() returned null for '${absoluteLibsDirPath}'."
                            }
-                       } else {
-                           echo "WARNING: Calculated libs path '${absoluteLibsDirPath}' is NOT a directory (exists: ${libsDir.exists()}). Dependencies might be missing."
                        }
-                    } else {
-                        echo "WARNING: LIBS_DIR_PATH environment variable is not set."
                     }
+                    def commonExternalClasspath = dependencyJars.join(File.pathSeparator)
+                    echo "DEBUG: Common external classpath: ${commonExternalClasspath}"
 
-                    if (!dependencyJars.isEmpty()) {
-                        echo "Found dependency JARs to add to classpath: ${dependencyJars.join(File.pathSeparator)}"
-                    } else {
-                        echo "WARNING: No external dependency JARs found or loaded. Compilation may fail for projects needing these JARs."
-                    }
-                    def commonClassPath = dependencyJars.join(File.pathSeparator)
-                    String classPathOpt = commonClassPath.isEmpty() ? "" : "-cp \"${commonClassPath}\""
-
-                    def builds = javaFiles.collectEntries { fullFilePath ->
-                        String groovyFilePath = fullFilePath.replace('\\', '/')
-                        def fileName = groovyFilePath.tokenize('/')[-1]
-                        def classNameOnly = fileName.replace('.java', '')
-                        String packageSubPath = ""
-                        String srcDirForSourcepathRelative = ""
-                        String fqcn = classNameOnly
-                        int srcMainJavaIdxInRelative = -1
-                        int srcIdxInRelative = -1
-                        int packageStartIndexInFilePath = -1
-                        String workspacePrefix = env.WORKSPACE.replace('\\', '/') + "/"
-                        String relativeFilePathToWorkspace = groovyFilePath.startsWith(workspacePrefix) ? groovyFilePath.substring(workspacePrefix.length()) : groovyFilePath
-                        srcMainJavaIdxInRelative = relativeFilePathToWorkspace.lastIndexOf("src/main/java/")
-                        srcIdxInRelative = relativeFilePathToWorkspace.lastIndexOf("src/")
-
-                        if (srcMainJavaIdxInRelative != -1) {
-                            packageStartIndexInFilePath = srcMainJavaIdxInRelative + "src/main/java/".length()
-                            srcDirForSourcepathRelative = relativeFilePathToWorkspace.substring(0, packageStartIndexInFilePath -1)
-                        } else if (srcIdxInRelative != -1) {
-                            packageStartIndexInFilePath = srcIdxInRelative + "src/".length()
-                            srcDirForSourcepathRelative = relativeFilePathToWorkspace.substring(0, packageStartIndexInFilePath -1)
+                    // Phase 1: Compile all modules
+                    def moduleCompilationJobs = [:]
+                    allJavaFilesByModule.each { moduleRelPath, moduleJavaFilesList ->
+                        if (moduleJavaFilesList.isEmpty()) {
+                            echo "Skipping empty module: ${moduleRelPath}"
+                            return // continue to next module
+                        }
+                        def moduleName = moduleRelPath.tokenize('\\/')[-1]
+                        def moduleClassOutputDir = "${OUTPUT_DIR}/${moduleName}_classes".replace('/', '\\')
+                        
+                        // Determine source path for this module (e.g., source/myModule/src/main/java or source/myModule/src)
+                        def moduleWorkspaceAbsPath = "${workspacePath}/${moduleRelPath}".replace('/', File.separator)
+                        def srcMainJava = new File("${moduleWorkspaceAbsPath}${File.separator}src${File.separator}main${File.separator}java")
+                        def srcJava = new File("${moduleWorkspaceAbsPath}${File.separator}src${File.separator}java")
+                        def srcDir = new File("${moduleWorkspaceAbsPath}${File.separator}src")
+                        String actualModuleSourcePathForJavac = ""
+                        if (srcMainJava.isDirectory()) {
+                            actualModuleSourcePathForJavac = srcMainJava.getAbsolutePath()
+                        } else if (srcJava.isDirectory()) {
+                            actualModuleSourcePathForJavac = srcJava.getAbsolutePath()
+                        } else if (srcDir.isDirectory()) {
+                            actualModuleSourcePathForJavac = srcDir.getAbsolutePath()
                         } else {
-                            String currentPath = relativeFilePathToWorkspace.contains('/') ? relativeFilePathToWorkspace.substring(0, relativeFilePathToWorkspace.lastIndexOf('/')) : '.'
-                            List<String> pathParts = currentPath.tokenize('/')
-                            int lastPotentialPackagePartIndex = pathParts.size() -1
-                            while(lastPotentialPackagePartIndex >= 0 && !pathParts[lastPotentialPackagePartIndex].isEmpty()) {
-                                if (pathParts[lastPotentialPackagePartIndex] ==~ /^[a-z_][a-z0-9_]*$/) {
-                                     lastPotentialPackagePartIndex--
-                                } else {
-                                    break
+                            echo "ERROR: Could not determine source directory for module ${moduleName} at ${moduleRelPath}. Using module root as fallback."
+                            actualModuleSourcePathForJavac = moduleWorkspaceAbsPath // Fallback, might not be ideal
+                        }
+                        actualModuleSourcePathForJavac = actualModuleSourcePathForJavac.replace('/', '\\')
+
+
+                        moduleCompilationJobs[moduleName] = {
+                            echo "--- Compiling Module: ${moduleName} ---"
+                            echo "  Source Path for javac: ${actualModuleSourcePathForJavac}"
+                            echo "  Output Dir: ${moduleClassOutputDir}"
+                            bat "if not exist \"${moduleClassOutputDir}\" mkdir \"${moduleClassOutputDir}\""
+                            
+                            def currentModuleCompileClasspathParts = new ArrayList(dependencyJars)
+                            // Add other compiled module outputs to classpath - this assumes a flat dependency or that they get compiled in time
+                            allJavaFilesByModule.keySet().each { otherModuleKey ->
+                                if (otherModuleKey != moduleRelPath) {
+                                    def otherModName = otherModuleKey.tokenize('\\/')[-1]
+                                    def otherModOutputDir = "${OUTPUT_DIR}/${otherModName}_classes".replace('/', '\\')
+                                    // Check if dir exists - it might not if parallel execution order is not guaranteed for dependencies
+                                    // For simplicity, we add it. `javac` will ignore non-existent classpath entries.
+                                    currentModuleCompileClasspathParts.add(otherModOutputDir)
                                 }
                             }
-                            srcDirForSourcepathRelative = pathParts.subList(0, lastPotentialPackagePartIndex + 1).join('/')
-                            if ( (lastPotentialPackagePartIndex + 1) < pathParts.size() ) {
-                                packageSubPath = pathParts.subList(lastPotentialPackagePartIndex + 1, pathParts.size()).join('/')
-                            }
-                            if (srcDirForSourcepathRelative.isEmpty() && currentPath != '.') {
-                                srcDirForSourcepathRelative = currentPath
-                            } else if (srcDirForSourcepathRelative.isEmpty() && currentPath == '.') {
-                                srcDirForSourcepathRelative = "."
-                            }
-                        }
+                            def currentModuleCompileCp = currentModuleCompileClasspathParts.unique().join(File.pathSeparator)
+                            String currentModuleCpOpt = currentModuleCompileCp.isEmpty() ? "" : "-cp \"${currentModuleCompileCp}\""
 
-                        if (packageStartIndexInFilePath != -1 && relativeFilePathToWorkspace.lastIndexOf('/') > packageStartIndexInFilePath) {
-                            packageSubPath = relativeFilePathToWorkspace.substring(packageStartIndexInFilePath, relativeFilePathToWorkspace.lastIndexOf('/'))
-                        }
-                        if (!packageSubPath.isEmpty()) {
-                            fqcn = packageSubPath.replace('/', '.') + "." + classNameOnly
-                        }
-                        def appClassOutputDirRelative = "${OUTPUT_DIR}/${classNameOnly}_classes".replace('/', '\\')
-                        bat "if exist \"${appClassOutputDirRelative}\" rmdir /s /q \"${appClassOutputDirRelative}\""
-                        bat "mkdir \"${appClassOutputDirRelative}\""
-
-                        [(classNameOnly): {
-                            def jarName = "${classNameOnly}.jar"
-                            def jarPathRelative = "${OUTPUT_DIR}\\${jarName}".replace('/', '\\')
-                            if (rootJarApps.contains(classNameOnly)) {
-                                jarPathRelative = jarName.replace('/', '\\')
-                                echo "INFO: ${classNameOnly} is a root JAR, will be placed in workspace root: ${jarPathRelative}"
-                            }
-                            echo "--- Processing App: ${classNameOnly} ---"
-                            echo "  Source File: ${fullFilePath}"
-                            echo "  FQCN: ${fqcn}"
-                            echo "  Sourcepath for javac (relative to workspace): ${srcDirForSourcepathRelative}"
-                            echo "  .class output directory (relative to workspace): ${appClassOutputDirRelative}"
-                            echo "  Output JAR (relative to workspace): ${jarPathRelative}"
-                            if (!commonClassPath.isEmpty()) {
-                                echo "  Compiler Classpath: ${commonClassPath}"
-                            }
-                            String batFullFilePath = fullFilePath.replace('/', '\\')
-                            String batSrcDirForSourcepathCmd = srcDirForSourcepathRelative.replace('/', '\\')
-                            def compileCommand = "javac -encoding UTF-8 ${classPathOpt} -d \"${appClassOutputDirRelative}\" -sourcepath \"${batSrcDirForSourcepathCmd}\" \"${batFullFilePath}\""
-                            def jarCommand = "jar cfe \"${jarPathRelative}\" ${fqcn} -C \"${appClassOutputDirRelative}\" ."
-
+                            def filesToCompile = moduleJavaFilesList.collect { "\"${it.replace('/','\\')}\"" }.join(" ")
+                            def compileCmd = "javac -encoding UTF-8 ${currentModuleCpOpt} -d \"${moduleClassOutputDir}\" -sourcepath \"${actualModuleSourcePathForJavac}\" ${filesToCompile}"
                             try {
-                                echo "  Compile CMD: ${compileCommand}"
-                                bat compileCommand
-                                echo "  Compile successful for ${classNameOnly}."
+                                echo "  Compile CMD for module ${moduleName}: ${compileCmd}"
+                                bat compileCmd
+                                echo "  Module ${moduleName} compiled successfully."
+                            } catch (e) {
+                                error("Compilation failed for module ${moduleName}: ${e.getMessage()}. Command was: ${compileCmd}")
+                            }
+                        }
+                    }
+                    if (!moduleCompilationJobs.isEmpty()) {
+                        try {
+                            parallel moduleCompilationJobs
+                        } catch (org.jenkinsci.plugins.workflow.cps.CpsCompilationErrorsException e) {
+                            error "Error setting up parallel compilation: ${e.getMessage()}"
+                        }
+                    } else {
+                        echo "No modules found to compile."
+                    }
+
+                    // Phase 2: Create JARs for main classes
+                    def jarCreationJobs = [:]
+                    mainMethodFiles.each { fullMainFilePath ->
+                        String groovyMainFilePath = fullMainFilePath.replace('\\', '/') // C:/Jenkins/.../source/module/src/main/java/com/pack/Main.java
+                        def mainClassNameOnly = groovyMainFilePath.tokenize('/')[-1].replace('.java', '')
+
+                        String mainFileModuleRelPath = allJavaFilesByModule.find { moduleRelP, fileList ->
+                            fileList.any { it.replace('\\','/') == groovyMainFilePath }
+                        }?.key
+
+                        if (!mainFileModuleRelPath) {
+                            echo "WARNING: Could not determine module for main file ${fullMainFilePath}. Skipping JAR creation."
+                            return // continue to next mainMethodFile
+                        }
+                        def mainFileModuleName = mainFileModuleRelPath.tokenize('\\/')[-1]
+                        def mainFileModuleClassOutputDir = "${OUTPUT_DIR}/${mainFileModuleName}_classes".replace('/', '\\')
+
+                        // FQCN Derivation
+                        String fqcn = mainClassNameOnly
+                        String mainFileModuleWorkspaceAbsPath = "${workspacePath}/${mainFileModuleRelPath}".replace('/', File.separator)
+                        String mainFileSrcMainJavaPath = new File("${mainFileModuleWorkspaceAbsPath}${File.separator}src${File.separator}main${File.separator}java").getAbsolutePath().replace('\\','/')
+                        String mainFileSrcJavaPath = new File("${mainFileModuleWorkspaceAbsPath}${File.separator}src${File.separator}java").getAbsolutePath().replace('\\','/')
+                        String mainFileSrcPath = new File("${mainFileModuleWorkspaceAbsPath}${File.separator}src").getAbsolutePath().replace('\\','/')
+                        
+                        String packagePathPart = ""
+                        if (groovyMainFilePath.startsWith(mainFileSrcMainJavaPath + "/")) {
+                            packagePathPart = groovyMainFilePath.substring((mainFileSrcMainJavaPath + "/").length())
+                        } else if (groovyMainFilePath.startsWith(mainFileSrcJavaPath + "/")) {
+                            packagePathPart = groovyMainFilePath.substring((mainFileSrcJavaPath + "/").length())
+                        } else if (groovyMainFilePath.startsWith(mainFileSrcPath + "/")) {
+                            packagePathPart = groovyMainFilePath.substring((mainFileSrcPath + "/").length())
+                        } else {
+                             // Fallback: try to find common path part if main file is not in a standard src layout
+                            String commonPath = mainFileModuleRelPath.replace('\\','/')
+                            if (groovyMainFilePath.startsWith(workspacePath + "/" + commonPath + "/")) {
+                                packagePathPart = groovyMainFilePath.substring((workspacePath + "/" + commonPath + "/").length())
+                                // Further strip common prefixes like 'java/' if they are not part of package
+                                if (packagePathPart.startsWith("java/")) packagePathPart = packagePathPart.substring("java/".length())
+                            }
+                        }
+                        
+                        if (packagePathPart.contains('/')) {
+                            fqcn = packagePathPart.substring(0, packagePathPart.lastIndexOf('/')).replace('/', '.') + "." + mainClassNameOnly
+                        }
+                        // End FQCN derivation
+
+                        jarCreationJobs[mainClassNameOnly] = {
+                            echo "--- Creating JAR for: ${mainClassNameOnly} (from module ${mainFileModuleName}) ---"
+                            echo "  FQCN for JAR: ${fqcn}"
+                            echo "  Using classes from: ${mainFileModuleClassOutputDir}"
+                            def jarName = "${mainClassNameOnly}.jar"
+                            // Special handling for MAIN_HUB_JAR_NAME
+                            if (mainClassNameOnly == MAIN_HUB_JAR_NAME.replace(".jar","") || mainClassNameOnly == "Jar_Main_Hub") { // Be flexible
+                                jarName = MAIN_HUB_JAR_NAME
+                            }
+                            def jarPathRelative = "${OUTPUT_DIR}\\${jarName}".replace('/', '\\')
+                            if (rootJarApps.contains(mainClassNameOnly) && jarName != MAIN_HUB_JAR_NAME) { // If it's a root app AND not the main hub already handled
+                                jarPathRelative = jarName.replace('/', '\\') // Place in workspace root
+                            } else if (jarName == MAIN_HUB_JAR_NAME) {
+                                // If it's the main hub, it might have specific placement rules or be handled by TEMP_RELEASE_STAGING_DIR logic later
+                                // For now, ensure it's created. If MAIN_HUB_JAR_NAME is in rootJarApps, it's covered.
+                                // If Jar_Main_Hub.jar is expected in root, ensure rootJarApps or MAIN_HUB_JAR_NAME logic covers it.
+                                // The current MAIN_HUB_JAR_NAME is 'Jar_Main_Hub.jar'.
+                                // If classNameOnly is 'Jar_Main_Hub', jarName becomes 'Jar_Main_Hub.jar'.
+                                // If 'Jar_Main_Hub' is in rootJarApps, it will be placed in root.
+                                // Let's assume MAIN_HUB_JAR_NAME should be placed in root if it's the main hub.
+                                if (jarName == MAIN_HUB_JAR_NAME) {
+                                     jarPathRelative = jarName.replace('/', '\\') // Place main hub in workspace root
+                                     echo "INFO: ${jarName} is the designated Main Hub JAR, will be placed in workspace root."
+                                }
+                            }
+                            
+                            if (!fileExists(mainFileModuleClassOutputDir)) {
+                                error "Output directory ${mainFileModuleClassOutputDir} does not exist for JARing ${mainClassNameOnly}. Module compilation likely failed."
+                            }
+
+                            def jarCommand = "jar cfe \"${jarPathRelative}\" ${fqcn} -C \"${mainFileModuleClassOutputDir}\" ."
+                            try {
                                 echo "  JAR CMD: ${jarCommand}"
                                 bat jarCommand
-                                echo "  JAR creation successful for ${classNameOnly}."
-                            } catch (Exception e) {
-                                error("Build failed for ${classNameOnly}: ${e.getMessage()}") // Use error to fail the build immediately with details
+                                echo "  JAR creation successful for ${mainClassNameOnly}."
+                            } catch (e) {
+                                error("JAR creation failed for ${mainClassNameOnly}: ${e.getMessage()}")
                             }
-
-                            echo "--- Finished App: ${classNameOnly} ---"
-                        }]
+                        }
                     }
-                    parallel builds
+                    if (!jarCreationJobs.isEmpty()) {
+                         try {
+                            parallel jarCreationJobs
+                        } catch (org.jenkinsci.plugins.workflow.cps.CpsCompilationErrorsException e) {
+                            error "Error setting up parallel JAR creation: ${e.getMessage()}"
+                        }
+                    } else {
+                        echo "No main method files found to JAR."
+                    }
+
                     def end = System.currentTimeMillis()
                     echo "✅ Build Apps stage completed in ${(end - start) / 1000}s"
                 }
@@ -268,31 +390,21 @@ pipeline {
                     bat "if not exist \"${testClassesDirBase}\" mkdir \"${testClassesDirBase}\""
                     bat "if not exist \"${testReportsDirBase}\" mkdir \"${testReportsDirBase}\""
 
-                    def workspacePath = env.WORKSPACE.replace('\\', '/') // Use forward slashes for internal Groovy logic
+                    def workspacePath = env.WORKSPACE.replace('\\', '/') 
                     def libsDirPath = env.LIBS_DIR_PATH
                     def absoluteLibsDirPath = "${workspacePath}/${libsDirPath}".replace('/', File.separator)
 
                     def dependencyJars = []
                     def libsDir = new File(absoluteLibsDirPath)
                     if (libsDir.isDirectory()) {
-                        echo "INFO [Unit Test]: Scanning for JARs in ${absoluteLibsDirPath}"
                         File[] filesInLibsDir = libsDir.listFiles()
                         if (filesInLibsDir != null) {
                             for (File f : filesInLibsDir) {
                                 if (f.isFile() && f.name.toLowerCase().endsWith(".jar")) {
                                     dependencyJars.add(f.getAbsolutePath().replace('/', '\\'))
-                                    echo "DEBUG [Unit Test]: Found dependency JAR: ${f.getAbsolutePath()}"
                                 }
                             }
-                        } else {
-                            echo "WARNING [Unit Test]: listFiles() returned null for ${absoluteLibsDirPath}."
                         }
-                    } else {
-                         echo "WARNING [Unit Test]: Calculated libs path '${absoluteLibsDirPath}' is NOT a directory (exists: ${libsDir.exists()})."
-                    }
-
-                    if (dependencyJars.isEmpty()) {
-                        echo "WARNING: No dependency JARs found in ${libsDirPath} after scanning. Tests might fail."
                     }
                     def commonTestClasspathParts = new ArrayList(dependencyJars)
 
@@ -302,9 +414,9 @@ pipeline {
                     }
                     echo "Using JUnit Runner: ${junitConsoleJar.replace('/', '\\')}"
 
-                    def mainJavaFilesTxt = 'main_java_files.txt'
+                    def mainJavaFilesTxt = 'main_java_files.txt' // Still needed to find main app classes for classpath
                     if (!fileExists(mainJavaFilesTxt)) {
-                        error "File '${mainJavaFilesTxt}' not found. Was 'Build Apps' stage successful? Cannot determine application class outputs."
+                        error "File '${mainJavaFilesTxt}' not found. Was 'Build Apps' stage successful?"
                     }
                     def mainAppFullPaths = readFile(file: mainJavaFilesTxt, encoding: 'UTF-8').trim().split("\\r?\\n")
                         .collect { it.trim().replace('\\','/') }
@@ -317,7 +429,7 @@ pipeline {
                         $VerbosePreference = 'SilentlyContinue';
                         $InformationPreference = 'SilentlyContinue';
 
-                        $DebugFilePath = Join-Path $env:WORKSPACE "powershell_test_discovery_debug.log"; # Use -Path for compatibility
+                        $DebugFilePath = Join-Path $env:WORKSPACE "powershell_test_discovery_debug.log";
                         Out-File -Path $DebugFilePath -InputObject "--- PowerShell Test Discovery Debug Log ---`n" -Encoding UTF8 -Force;
 
                         $ErrorActionPreference = 'Stop'
@@ -328,64 +440,63 @@ pipeline {
 
                         $testFilesByModule = @{}
 
-                        Add-Content -Path $DebugFilePath -Value "Workspace Path: $WorkspacePath`n"; # Use -Path
-                        Add-Content -Path $DebugFilePath -Value "Found Module Roots (`$moduleRoots.Count): $($moduleRoots.Count)`n"; # Use -Path
-                        $moduleRoots | ForEach-Object { Add-Content -Path $DebugFilePath -Value "  - $_" } # Use -Path
-                        Add-Content -Path $DebugFilePath -Value "`n"; # Use -Path
+                        Add-Content -Path $DebugFilePath -Value "Workspace Path: $WorkspacePath`n";
+                        Add-Content -Path $DebugFilePath -Value "Found Module Roots (`$moduleRoots.Count): $($moduleRoots.Count)`n";
+                        $moduleRoots | ForEach-Object { Add-Content -Path $DebugFilePath -Value "  - $_" }
+                        Add-Content -Path $DebugFilePath -Value "`n";
 
                         foreach ($rootPathAbs in $moduleRoots) {
-                            $testJavaDir = Join-Path -Path $rootPathAbs -ChildPath 'src\\test\\java'; # Path is fine here, refers to Join-Path param
-                            Add-Content -Path $DebugFilePath -Value "Processing root: $rootPathAbs, Test Java Dir: $testJavaDir`n"; # Use -Path
+                            $testJavaDir = Join-Path -Path $rootPathAbs -ChildPath 'src\\test\\java';
+                            Add-Content -Path $DebugFilePath -Value "Processing root: $rootPathAbs, Test Java Dir: $testJavaDir`n";
                             if (Test-Path $testJavaDir -PathType Container) {
-                                Add-Content -Path $DebugFilePath -Value "  '$testJavaDir' exists and is a directory.`n"; # Use -Path
+                                Add-Content -Path $DebugFilePath -Value "  '$testJavaDir' exists and is a directory.`n";
                                 $javaFiles = Get-ChildItem -Path $testJavaDir -Recurse -Filter *.java | ForEach-Object { $_.FullName }
-                                Add-Content -Path $DebugFilePath -Value "  Found Java files in $testJavaDir (`$javaFiles.Count): $($javaFiles.Count)`n"; # Use -Path
+                                Add-Content -Path $DebugFilePath -Value "  Found Java files in $testJavaDir (`$javaFiles.Count): $($javaFiles.Count)`n";
                                 if ($javaFiles.Count -gt 0) {
-                                    $javaFiles | ForEach-Object { Add-Content -Path $DebugFilePath -Value "    - $($_)" } # Use -Path
-                                    $relativeRoot = $rootPathAbs.Substring($WorkspacePath.Length).TrimStart('\\').TrimStart('/'); # Substring/Trim are fine, refers to string methods
+                                    $javaFiles | ForEach-Object { Add-Content -Path $DebugFilePath -Value "    - $($_)" }
+                                    $relativeRoot = $rootPathAbs.Substring($WorkspacePath.Length).TrimStart('\\').TrimStart('/');
                                     $testFilesByModule[$relativeRoot] = @($javaFiles)
-                                    Add-Content -Path $DebugFilePath -Value "  Mapped relative root '$relativeRoot' to $($javaFiles.Count) files.`n"; # Use -Path
+                                    Add-Content -Path $DebugFilePath -Value "  Mapped relative root '$relativeRoot' to $($javaFiles.Count) files.`n";
                                 } else {
-                                     Add-Content -Path $DebugFilePath -Value "  No Java files found in $testJavaDir.`n"; # Use -Path
+                                     Add-Content -Path $DebugFilePath -Value "  No Java files found in $testJavaDir.`n";
                                 }
                             } else {
-                                Add-Content -Path $DebugFilePath -Value "  '$testJavaDir' does NOT exist or is not a directory.`n"; # Use -Path
+                                Add-Content -Path $DebugFilePath -Value "  '$testJavaDir' does NOT exist or is not a directory.`n";
                             }
                         }
-                        Add-Content -Path $DebugFilePath -Value "`nFinal `$testFilesByModule before JSON conversion (`$testFilesByModule.Count entries): $($testFilesByModule.Count)`n"; # Use -Path
-                        $testFilesByModule.GetEnumerator() | ForEach-Object { Add-Content -Path $DebugFilePath -Value "  Key: $($_.Name), Files: $($_.Value.Count)" } # Use -Path
-                        Add-Content -Path $DebugFilePath -Value "`n--- End of PowerShell Debug Log ---`n"; # Use -Path
+                        Add-Content -Path $DebugFilePath -Value "`nFinal `$testFilesByModule before JSON conversion (`$testFilesByModule.Count entries): $($testFilesByModule.Count)`n";
+                        $testFilesByModule.GetEnumerator() | ForEach-Object { Add-Content -Path $DebugFilePath -Value "  Key: $($_.Name), Files: $($_.Value.Count)" }
+                        Add-Content -Path $DebugFilePath -Value "`n--- End of PowerShell Debug Log ---`n";
 
                         return $testFilesByModule | ConvertTo-Json -Depth 5
                     '''.stripIndent()
                     byte[] psScriptBytes = psFindTestModulesScript.getBytes("UTF-16LE")
                     def encodedPsCommand = psScriptBytes.encodeBase64().toString()
 
-                    // Re-add stream suppressions, using -Path in script for compatibility.
                     def commandToExecute = "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null"
                     echo "DEBUG: Executing PowerShell command for test discovery."
                     def psOutputJson = bat(script: commandToExecute, returnStdout: true).trim()
-                    echo "DEBUG: Raw psOutputJson from PowerShell: '${psOutputJson}'"
+                    echo "DEBUG: Raw psOutputJson from PowerShell (Unit Test): '${psOutputJson}'"
 
                     if (psOutputJson.isEmpty() || psOutputJson == "{}") {
-                        echo "No test modules with src/test/java/*.java files found according to PowerShell script. Skipping test execution."
+                        echo "No test modules with src/test/java/*.java files found. Skipping test execution."
                         echo "Check 'powershell_test_discovery_debug.log' in workspace for details."
                         return
                     }
                     if (psOutputJson == null || psOutputJson.trim().isEmpty()) {
-                        error("PowerShell script for test discovery returned empty or null. Cannot parse JSON. Check 'powershell_test_discovery_debug.log'.")
+                        error("PowerShell script for test discovery returned empty or null. Check 'powershell_test_discovery_debug.log'.")
                     }
 
-                    // Extract the JSON part from the raw output
-                    def jsonStart = psOutputJson.indexOf('{')
-                    def jsonEnd = psOutputJson.lastIndexOf('}')
-                    def cleanJsonString = ""
-                    if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart) {
-                        cleanJsonString = psOutputJson.substring(jsonStart, jsonEnd + 1)
+                    def jsonTestStart = psOutputJson.indexOf('{')
+                    def jsonTestEnd = psOutputJson.lastIndexOf('}')
+                    def cleanTestJsonString = ""
+                    if (jsonTestStart != -1 && jsonTestEnd != -1 && jsonTestEnd > jsonTestStart) {
+                        cleanTestJsonString = psOutputJson.substring(jsonTestStart, jsonTestEnd + 1)
+                        echo "DEBUG: cleanTestJsonString to be parsed (Unit Test): '${cleanTestJsonString}'"
                     } else {
-                         error("Could not extract JSON from PowerShell output: '${psOutputJson}'. Check 'powershell_test_discovery_debug.log'.")
+                         error("Could not extract JSON from PowerShell output (Unit Test): '${psOutputJson}'. Check 'powershell_test_discovery_debug.log'.")
                     }
-                    def testModulesData = readJSON(text: cleanJsonString)
+                    def testModulesData = readJSON(text: cleanTestJsonString)
 
                     if (testModulesData.isEmpty()) {
                         echo "No test modules found after parsing JSON. Skipping test execution."
@@ -414,24 +525,17 @@ pipeline {
                         def testSrcJavaDir = "${moduleWorkspacePath}${File.separator}src${File.separator}test${File.separator}java"
 
                         def associatedMainAppClassNameOnly = null
-                        def associatedAppClassOutputDir = null
+                        def associatedAppClassOutputDir = null // This is the key: out/ModuleName_classes
 
-                        // Normalize moduleRelativePath to use forward slashes for comparison
-                        def normalizedModuleRelativePath = moduleRelativePath.replace('\\', '/')
-                        def expectedMainSrcPrefix = "${workspacePath}/${normalizedModuleRelativePath}/src/main/java".replace('//','/')
-                        def foundMainAppFile = mainAppFullPaths.find { mainAppFullPath ->
-                            mainAppFullPath.startsWith(expectedMainSrcPrefix)
-                        }
-
-                        if (foundMainAppFile) {
-                            def mainAppFileName = foundMainAppFile.tokenize('/')[-1]
-                            associatedMainAppClassNameOnly = mainAppFileName.replace('.java', '')
-                            // Corrected variable name here
-                            associatedAppClassOutputDir = "${env.OUTPUT_DIR}\\${associatedMainAppClassNameOnly}_classes".replace('/', '\\')
-                            echo "  INFO: Linked module '${moduleName}' to app output '${associatedAppClassOutputDir}' via main file '${mainAppFileName}'."
+                        // Find the main application classes directory for this test module
+                        // The moduleName derived from test discovery (e.g., "main_hub") should match the moduleName used in "Build Apps"
+                        associatedAppClassOutputDir = "${env.OUTPUT_DIR}\\${moduleName}_classes".replace('/', '\\')
+                        if (fileExists(associatedAppClassOutputDir)) {
+                            echo "  INFO: Linked test module '${moduleName}' to app output '${associatedAppClassOutputDir}'."
                         } else {
-                            echo "  WARNING: Could not find a main app file in '${expectedMainSrcPrefix}' for module '${moduleName}'. App classes might be missing from test classpath."
+                            echo "  WARNING: Main app class output directory '${associatedAppClassOutputDir}' not found for test module '${moduleName}'. Test compilation might fail."
                         }
+
 
                         def moduleTestClassesDir = "${testClassesDirBase.replace('/', '\\')}\\${moduleName}_tests"
                         def moduleTestReportsDir = "${testReportsDirBase.replace('/', '\\')}\\${moduleName}"
@@ -446,25 +550,27 @@ pipeline {
                         def testFilesToCompile = testFilePaths.collect { "\"${it.replace('/','\\')}\"" }.join(" ")
 
                         echo "  Compiling test files for module ${moduleName}..."
-                        def compileTestCommand = "javac -encoding UTF-8 -d \"${moduleTestClassesDir}\" -sourcepath \"${testSrcJavaDir}\" -cp \"${classpathStringForCompile}\" ${testFilesToCompile}"
+                        def compileTestCommand = "javac -encoding UTF-8 -d \"${moduleTestClassesDir}\" -sourcepath \"${testSrcJavaDir.replace('/','\\')}\" -cp \"${classpathStringForCompile}\" ${testFilesToCompile}"
                         try {
+                            echo "    Compile CMD: ${compileTestCommand}"
                             bat compileTestCommand
                             echo "  Test compilation successful for ${moduleName}."
                         } catch (e) {
-                            error "Test compilation failed for module ${moduleName}. Error: ${e.getMessage()}"
+                            error "Test compilation failed for module ${moduleName}. Error: ${e.getMessage()}. Command: ${compileTestCommand}"
                         }
 
                         def classpathForJUnit = new ArrayList(currentModuleClasspath)
-                        classpathForJUnit.add(moduleTestClassesDir)
+                        classpathForJUnit.add(moduleTestClassesDir) // Add compiled test classes
                         def junitClasspathString = classpathForJUnit.unique().join(File.pathSeparator)
 
                         echo "  Running tests for module ${moduleName} (Reports: ${moduleTestReportsDir})..."
                         def junitCommand = "java -jar \"${junitConsoleJar.replace('/', '\\')}\" --scan-classpath --classpath \"${junitClasspathString}\" --reports-dir \"${moduleTestReportsDir}\""
                         try {
+                            echo "    JUnit CMD: ${junitCommand}"
                             bat junitCommand
                             echo "  JUnit tests execution completed for ${moduleName}."
                         } catch (e) {
-                            echo "  ERROR: JUnit execution for module ${moduleName} failed with non-zero exit code. Error: ${e.getMessage()}"
+                            echo "  ERROR: JUnit execution for module ${moduleName} failed. Error: ${e.getMessage()}"
                             hasExecutionErrors = true
                         }
                     }
@@ -494,16 +600,18 @@ pipeline {
                     bat "mkdir \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\""
 
                     def quotedMainHubJarNameForBat = "\"${MAIN_HUB_JAR_NAME}\""
-                    def mainHubJarSourcePathInOutput = "${OUTPUT_DIR}\\${MAIN_HUB_JAR_NAME}"
+                    // Check if main hub JAR is in workspace root (if it was a rootJarApp) or in OUTPUT_DIR
+                    def mainHubJarSourcePath = MAIN_HUB_JAR_NAME // Assume in root first
+                    if (!fileExists(mainHubJarSourcePath)) {
+                        mainHubJarSourcePath = "${OUTPUT_DIR}\\${MAIN_HUB_JAR_NAME}" // Check in OUTPUT_DIR
+                    }
 
-                    if (fileExists(mainHubJarSourcePathInOutput)) {
-                        echo "Copying main hub JAR: ${mainHubJarSourcePathInOutput} to ${TEMP_RELEASE_STAGING_DIR}\\${MAIN_HUB_JAR_NAME}"
-                        bat "copy \"${mainHubJarSourcePathInOutput}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedMainHubJarNameForBat}\""
-                    } else if (MAIN_HUB_JAR_NAME == "AppMainRoot.jar" && fileExists(MAIN_HUB_JAR_NAME)) {
-                         echo "Copying root AppMainRoot.jar (as Main Hub): ${MAIN_HUB_JAR_NAME} to ${TEMP_RELEASE_STAGING_DIR}\\${MAIN_HUB_JAR_NAME}"
-                         bat "copy \"${MAIN_HUB_JAR_NAME}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedMainHubJarNameForBat}\""
+
+                    if (fileExists(mainHubJarSourcePath)) {
+                        echo "Copying main hub JAR: ${mainHubJarSourcePath} to ${TEMP_RELEASE_STAGING_DIR}\\${MAIN_HUB_JAR_NAME}"
+                        bat "copy \"${mainHubJarSourcePath.replace('/','\\')}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedMainHubJarNameForBat}\""
                     } else {
-                       echo "WARNING: Main hub JAR ${MAIN_HUB_JAR_NAME} not found in ${OUTPUT_DIR} or workspace root. It will be missing from the release ZIP root."
+                       echo "WARNING: Main hub JAR ${MAIN_HUB_JAR_NAME} not found in workspace root or ${OUTPUT_DIR}. It will be missing from the release ZIP root."
                     }
 
                     echo "Copying other JARs from ${OUTPUT_DIR} to ${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\"
@@ -511,24 +619,32 @@ pipeline {
                         for %%f in ("${OUTPUT_DIR}\\*.jar") do (
                             if /I not "%%~nxf"==${quotedMainHubJarNameForBat} (
                                 copy "%%f" "${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\"
+                            ) else if not "%%f"=="${mainHubJarSourcePath.replace('/','\\')}" (
+                                copy "%%f" "${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\"
                             ) else (
-                                echo "Skipping %%~nxf as it's the main hub JAR ('${MAIN_HUB_JAR_NAME}') and already copied to root."
+                                echo "Skipping %%~nxf as it's the main hub JAR ('${MAIN_HUB_JAR_NAME}') and already copied to root or handled."
                             )
                         )
                     """
-
+                    
+                    // Handle AppMainRoot.jar if it's different from MAIN_HUB_JAR_NAME and was a rootJarApp
                     def appMainRootJarName = "AppMainRoot.jar"
                     def quotedAppMainRootJarNameForBat = "\"${appMainRootJarName}\""
                     if (appMainRootJarName != MAIN_HUB_JAR_NAME) {
-                        if (fileExists(appMainRootJarName)) {
-                             echo "Copying specific root JAR ${appMainRootJarName} to ${TEMP_RELEASE_STAGING_DIR}\\${appMainRootJarName}"
-                            bat "copy \"${appMainRootJarName}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedAppMainRootJarNameForBat}\""
-                        } else if (fileExists("${OUTPUT_DIR}\\${appMainRootJarName}")) {
-                            echo "Copying specific root JAR ${OUTPUT_DIR}\\${appMainRootJarName} to ${TEMP_RELEASE_STAGING_DIR}\\${appMainRootJarName}"
-                            bat "copy \"${OUTPUT_DIR}\\${appMainRootJarName}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedAppMainRootJarNameForBat}\""
-                            bat "if exist \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\${appMainRootJarName}\" del \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\${quotedAppMainRootJarNameForBat}\""
+                        def appMainRootSourcePath = appMainRootJarName // Assume in root
+                        if (!fileExists(appMainRootSourcePath)) {
+                            appMainRootSourcePath = "${OUTPUT_DIR}\\${appMainRootJarName}" // Check in OUTPUT_DIR
+                        }
+
+                        if (fileExists(appMainRootSourcePath)) {
+                             echo "Copying specific root JAR ${appMainRootSourcePath} to ${TEMP_RELEASE_STAGING_DIR}\\${appMainRootJarName}"
+                            bat "copy \"${appMainRootSourcePath.replace('/','\\')}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedAppMainRootJarNameForBat}\""
+                            // If it was copied from OUTPUT_DIR, remove it from the subdirectory in staging to avoid duplication
+                            if (appMainRootSourcePath.startsWith(OUTPUT_DIR)) {
+                                bat "if exist \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\${appMainRootJarName}\" del \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\${quotedAppMainRootJarNameForBat}\""
+                            }
                         } else {
-                            echo "Warning: Specific root JAR ${appMainRootJarName} not found."
+                            echo "Warning: Specific root JAR ${appMainRootJarName} not found in workspace root or ${OUTPUT_DIR}."
                         }
                     }
                     echo "Contents of staging directory ${TEMP_RELEASE_STAGING_DIR}:"
