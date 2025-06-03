@@ -261,13 +261,23 @@ pipeline {
                     def dependencyJars = []
                     def libsDir = new File(absoluteLibsDirPath)
                     if (libsDir.isDirectory()) {
-                        libsDir.eachFileRecurse(groovy.io.FileType.FILES) { file ->
-                            if (file.name.toLowerCase().endsWith(".jar")) {
-                                dependencyJars.add(file.getAbsolutePath().replace('/', '\\'))
+                        // Replaced eachFileRecurse with listFiles() and a for loop for CPS compatibility
+                        echo "INFO [Unit Test]: Scanning for JARs in ${absoluteLibsDirPath}"
+                        File[] filesInLibsDir = libsDir.listFiles()
+                        if (filesInLibsDir != null) {
+                            for (File file : filesInLibsDir) {
+                                if (file.isFile() && file.name.toLowerCase().endsWith(".jar")) {
+                                    dependencyJars.add(file.getAbsolutePath().replace('/', '\\'))
+                                    echo "DEBUG [Unit Test]: Found dependency JAR: ${file.getAbsolutePath()}"
+                                }
                             }
+                        } else {
+                            // This case should ideally not happen if libsDirPath exists and is a directory
+                            // but good to log if it does.
+                                dependencyJars.add(file.getAbsolutePath().replace('/', '\\'))
                         }
                     }
-                    if (dependencyJars.isEmpty()) {
+                    } else if (dependencyJars.isEmpty()) { // Check if empty only if libsDir was not a directory or listFiles was null/empty
                         echo "WARNING: No dependency JARs found in ${libsDirPath}. Tests might fail."
                     }
                     def commonTestClasspathParts = new ArrayList(dependencyJars)
