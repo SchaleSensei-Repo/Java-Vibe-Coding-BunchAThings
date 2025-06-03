@@ -237,11 +237,19 @@ pipeline {
                             String batFullFilePath = fullFilePath.replace('/', '\\')
                             String batSrcDirForSourcepathCmd = srcDirForSourcepathRelative.replace('/', '\\')
                             def compileCommand = "javac -encoding UTF-8 ${classPathOpt} -d \"${appClassOutputDirRelative}\" -sourcepath \"${batSrcDirForSourcepathCmd}\" \"${batFullFilePath}\""
-                            echo "  Compile CMD: ${compileCommand}"
-                            bat compileCommand
                             def jarCommand = "jar cfe \"${jarPathRelative}\" ${fqcn} -C \"${appClassOutputDirRelative}\" ."
-                            echo "  JAR CMD: ${jarCommand}"
-                            bat jarCommand
+
+                            try {
+                                echo "  Compile CMD: ${compileCommand}"
+                                bat compileCommand
+                                echo "  Compile successful for ${classNameOnly}."
+                                echo "  JAR CMD: ${jarCommand}"
+                                bat jarCommand
+                                echo "  JAR creation successful for ${classNameOnly}."
+                            } catch (Exception e) {
+                                error("Build failed for ${classNameOnly}: ${e.getMessage()}") // Use error to fail the build immediately with details
+                            }
+                            
                             echo "--- Finished App: ${classNameOnly} ---"
                         }]
                     }
