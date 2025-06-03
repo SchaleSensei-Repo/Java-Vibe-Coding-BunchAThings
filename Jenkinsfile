@@ -7,8 +7,8 @@ pipeline {
 
     environment {
         OUTPUT_DIR = 'out'
-        RELEASE_PACKAGE_DIR = 'release_package' 
-        TEMP_RELEASE_STAGING_DIR = 'temp_release_staging' 
+        RELEASE_PACKAGE_DIR = 'release_package'
+        TEMP_RELEASE_STAGING_DIR = 'temp_release_staging'
         MAIN_HUB_JAR_NAME = 'Jar_Main_Hub.jar' // Adjusted for space
         GITHUB_REPO = 'SchaleSensei-Repo/Java-Vibe-Coding-BunchAThings'
         GITHUB_CREDS = 'GITHUB_PAT'
@@ -43,28 +43,28 @@ pipeline {
                     } else {
                         def libsDirPath = env.LIBS_DIR_PATH
                         bat "if not exist \"${libsDirPath}\" mkdir \"${libsDirPath}\""
-                        
+
                         echo "Found ${libUrls.size()} URL(s) to process from ${libsFile}."
                         libUrls.each { url ->
                             try {
                                 def fileName = url.substring(url.lastIndexOf('/') + 1)
                                 if (!fileName || fileName.isEmpty()) {
                                     echo "WARNING: Could not extract a valid filename (empty after substring) from URL: ${url}. Skipping."
-                                    return 
+                                    return
                                 }
                                 int queryIndex = fileName.indexOf('?')
                                 if (queryIndex != -1) { fileName = fileName.substring(0, queryIndex) }
                                 int fragmentIndex = fileName.indexOf('#')
                                 if (fragmentIndex != -1) { fileName = fileName.substring(0, fragmentIndex) }
-                                if (!fileName || fileName.isEmpty()) { 
+                                if (!fileName || fileName.isEmpty()) {
                                     echo "WARNING: Could not extract a valid filename (empty after cleaning) from URL: ${url}. Skipping."
-                                    return 
+                                    return
                                 }
                                 def destPath = "${libsDirPath}\\${fileName}".replace('/', '\\')
                                 echo "Downloading ${url} to ${destPath}"
                                 bat "powershell -NoProfile -NonInteractive -Command \"Invoke-WebRequest -Uri '${url}' -OutFile '${destPath}' -UseBasicParsing\""
                                 echo "Successfully downloaded ${fileName}"
-                            } catch (Exception e) { 
+                            } catch (Exception e) {
                                 echo "ERROR: Failed to download or process filename for ${url}. Error: ${e.toString()}"
                             }
                         }
@@ -102,8 +102,8 @@ pipeline {
 
                     byte[] scriptBytes = psScriptContent.getBytes("UTF-16LE")
                     def encodedCommand = scriptBytes.encodeBase64().toString()
-                    // Temporarily remove stream suppressions to see PowerShell errors for main file discovery
-                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
+                    // Re-add stream suppressions as this script is working
+                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null"
 
 
                     echo "Listing workspace root contents:"
@@ -122,7 +122,7 @@ pipeline {
                         error "No Java files with a main method were found after processing main_java_files.txt."
                     }
 
-                    def rootJarApps = ['AppMainRoot'] 
+                    def rootJarApps = ['AppMainRoot']
                     def dependencyJars = []
                     def workspacePath = env.WORKSPACE
                     def absoluteLibsDirPath = "${workspacePath}\\${env.LIBS_DIR_PATH}".replace('/', File.separator)
@@ -221,7 +221,7 @@ pipeline {
                             def jarName = "${classNameOnly}.jar"
                             def jarPathRelative = "${OUTPUT_DIR}\\${jarName}".replace('/', '\\')
                             if (rootJarApps.contains(classNameOnly)) {
-                                jarPathRelative = jarName.replace('/', '\\') 
+                                jarPathRelative = jarName.replace('/', '\\')
                                 echo "INFO: ${classNameOnly} is a root JAR, will be placed in workspace root: ${jarPathRelative}"
                             }
                             echo "--- Processing App: ${classNameOnly} ---"
@@ -248,7 +248,7 @@ pipeline {
                             } catch (Exception e) {
                                 error("Build failed for ${classNameOnly}: ${e.getMessage()}") // Use error to fail the build immediately with details
                             }
-                            
+
                             echo "--- Finished App: ${classNameOnly} ---"
                         }]
                     }
@@ -271,14 +271,14 @@ pipeline {
                     def workspacePath = env.WORKSPACE.replace('\\', '/') // Use forward slashes for internal Groovy logic
                     def libsDirPath = env.LIBS_DIR_PATH
                     def absoluteLibsDirPath = "${workspacePath}/${libsDirPath}".replace('/', File.separator)
-                    
+
                     def dependencyJars = []
                     def libsDir = new File(absoluteLibsDirPath)
                     if (libsDir.isDirectory()) {
                         echo "INFO [Unit Test]: Scanning for JARs in ${absoluteLibsDirPath}"
                         File[] filesInLibsDir = libsDir.listFiles()
                         if (filesInLibsDir != null) {
-                            for (File f : filesInLibsDir) { 
+                            for (File f : filesInLibsDir) {
                                 if (f.isFile() && f.name.toLowerCase().endsWith(".jar")) {
                                     dependencyJars.add(f.getAbsolutePath().replace('/', '\\'))
                                     echo "DEBUG [Unit Test]: Found dependency JAR: ${f.getAbsolutePath()}"
@@ -287,7 +287,7 @@ pipeline {
                         } else {
                             echo "WARNING [Unit Test]: listFiles() returned null for ${absoluteLibsDirPath}."
                         }
-                    } else { 
+                    } else {
                          echo "WARNING [Unit Test]: Calculated libs path '${absoluteLibsDirPath}' is NOT a directory (exists: ${libsDir.exists()})."
                     }
 
@@ -307,7 +307,7 @@ pipeline {
                         error "File '${mainJavaFilesTxt}' not found. Was 'Build Apps' stage successful? Cannot determine application class outputs."
                     }
                     def mainAppFullPaths = readFile(file: mainJavaFilesTxt, encoding: 'UTF-8').trim().split("\\r?\\n")
-                        .collect { it.trim().replace('\\','/') } 
+                        .collect { it.trim().replace('\\','/') }
                         .findAll { it }
 
                     echo "Scanning for test modules (directories containing src/test/java)..."
@@ -325,7 +325,7 @@ pipeline {
                         $moduleRoots = Get-ChildItem -Path $WorkspacePath -Recurse -Directory -Filter 'java' |
                             Where-Object { $_.Name -eq 'java' -and $_.Parent.Name -eq 'test' -and $_.Parent.Parent.Name -eq 'src' } |
                             ForEach-Object { $_.Parent.Parent.Parent.FullName } | Get-Unique
-                        
+
                         $testFilesByModule = @{}
 
                         Add-Content -Path $DebugFilePath -Value "Workspace Path: $WorkspacePath`n"; # Use -Path
@@ -360,10 +360,10 @@ pipeline {
                     '''.stripIndent()
                     byte[] psScriptBytes = psFindTestModulesScript.getBytes("UTF-16LE")
                     def encodedPsCommand = psScriptBytes.encodeBase64().toString()
-                    
-                    // Temporarily remove stream suppressions to see PowerShell errors for test discovery
-                    def commandToExecute = "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand}"
-                    echo "DEBUG: Executing PowerShell command for test discovery." 
+
+                    // Re-add stream suppressions, using -Path in script for compatibility.
+                    def commandToExecute = "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null"
+                    echo "DEBUG: Executing PowerShell command for test discovery."
                     def psOutputJson = bat(script: commandToExecute, returnStdout: true).trim()
                     echo "DEBUG: Raw psOutputJson from PowerShell: '${psOutputJson}'"
 
@@ -404,19 +404,21 @@ pipeline {
 
                         if (testFilePaths.isEmpty() || testFilePaths.every { it == null || it.toString().trim().isEmpty() }) {
                             echo "Skipping module '${moduleRelativePath}' as it has no test files listed."
-                            return 
+                            return
                         }
 
                         def moduleName = moduleRelativePath.tokenize('\\/')[-1]
                         echo "--- Processing tests for module: ${moduleName} (Path: ${moduleRelativePath}) ---"
 
-                        def moduleWorkspacePath = "${workspacePath}/${moduleRelativePath}".replace('/', File.separator) 
+                        def moduleWorkspacePath = "${workspacePath}/${moduleRelativePath}".replace('/', File.separator)
                         def testSrcJavaDir = "${moduleWorkspacePath}${File.separator}src${File.separator}test${File.separator}java"
 
                         def associatedMainAppClassNameOnly = null
                         def associatedAppClassOutputDir = null
 
-                        def expectedMainSrcPrefix = "${workspacePath}/${moduleRelativePath}/src/main/java".replace('//','/')
+                        // Normalize moduleRelativePath to use forward slashes for comparison
+                        def normalizedModuleRelativePath = moduleRelativePath.replace('\\', '/')
+                        def expectedMainSrcPrefix = "${workspacePath}/${normalizedModuleRelativePath}/src/main/java".replace('//','/')
                         def foundMainAppFile = mainAppFullPaths.find { mainAppFullPath ->
                             mainAppFullPath.startsWith(expectedMainSrcPrefix)
                         }
@@ -425,7 +427,7 @@ pipeline {
                             def mainAppFileName = foundMainAppFile.tokenize('/')[-1]
                             associatedMainAppClassNameOnly = mainAppFileName.replace('.java', '')
                             // Corrected variable name here
-                            associatedAppClassOutputDir = "${env.OUTPUT_DIR}\\${associatedMainAppClassNameOnly}_classes".replace('/', '\\') 
+                            associatedAppClassOutputDir = "${env.OUTPUT_DIR}\\${associatedMainAppClassNameOnly}_classes".replace('/', '\\')
                             echo "  INFO: Linked module '${moduleName}' to app output '${associatedAppClassOutputDir}' via main file '${mainAppFileName}'."
                         } else {
                             echo "  WARNING: Could not find a main app file in '${expectedMainSrcPrefix}' for module '${moduleName}'. App classes might be missing from test classpath."
@@ -461,14 +463,14 @@ pipeline {
                         try {
                             bat junitCommand
                             echo "  JUnit tests execution completed for ${moduleName}."
-                        } catch (e) { 
+                        } catch (e) {
                             echo "  ERROR: JUnit execution for module ${moduleName} failed with non-zero exit code. Error: ${e.getMessage()}"
-                            hasExecutionErrors = true 
+                            hasExecutionErrors = true
                         }
                     }
 
                     if (hasExecutionErrors) {
-                        currentBuild.result = 'UNSTABLE' 
+                        currentBuild.result = 'UNSTABLE'
                         echo "One or more test modules encountered execution errors."
                     }
                     echo "--- Finished Unit Test Stage ---"
@@ -483,27 +485,27 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Create Release Package') {
             steps {
                 script {
                     bat "if exist \"${TEMP_RELEASE_STAGING_DIR}\" rmdir /s /q \"${TEMP_RELEASE_STAGING_DIR}\""
                     bat "mkdir \"${TEMP_RELEASE_STAGING_DIR}\""
-                    bat "mkdir \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\"" 
+                    bat "mkdir \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\""
 
-                    def quotedMainHubJarNameForBat = "\"${MAIN_HUB_JAR_NAME}\"" 
-                    def mainHubJarSourcePathInOutput = "${OUTPUT_DIR}\\${MAIN_HUB_JAR_NAME}" 
+                    def quotedMainHubJarNameForBat = "\"${MAIN_HUB_JAR_NAME}\""
+                    def mainHubJarSourcePathInOutput = "${OUTPUT_DIR}\\${MAIN_HUB_JAR_NAME}"
 
                     if (fileExists(mainHubJarSourcePathInOutput)) {
                         echo "Copying main hub JAR: ${mainHubJarSourcePathInOutput} to ${TEMP_RELEASE_STAGING_DIR}\\${MAIN_HUB_JAR_NAME}"
                         bat "copy \"${mainHubJarSourcePathInOutput}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedMainHubJarNameForBat}\""
-                    } else if (MAIN_HUB_JAR_NAME == "AppMainRoot.jar" && fileExists(MAIN_HUB_JAR_NAME)) { 
+                    } else if (MAIN_HUB_JAR_NAME == "AppMainRoot.jar" && fileExists(MAIN_HUB_JAR_NAME)) {
                          echo "Copying root AppMainRoot.jar (as Main Hub): ${MAIN_HUB_JAR_NAME} to ${TEMP_RELEASE_STAGING_DIR}\\${MAIN_HUB_JAR_NAME}"
                          bat "copy \"${MAIN_HUB_JAR_NAME}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedMainHubJarNameForBat}\""
                     } else {
                        echo "WARNING: Main hub JAR ${MAIN_HUB_JAR_NAME} not found in ${OUTPUT_DIR} or workspace root. It will be missing from the release ZIP root."
                     }
-                    
+
                     echo "Copying other JARs from ${OUTPUT_DIR} to ${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\"
                     bat """
                         for %%f in ("${OUTPUT_DIR}\\*.jar") do (
@@ -514,14 +516,14 @@ pipeline {
                             )
                         )
                     """
-                    
+
                     def appMainRootJarName = "AppMainRoot.jar"
                     def quotedAppMainRootJarNameForBat = "\"${appMainRootJarName}\""
-                    if (appMainRootJarName != MAIN_HUB_JAR_NAME) { 
-                        if (fileExists(appMainRootJarName)) { 
+                    if (appMainRootJarName != MAIN_HUB_JAR_NAME) {
+                        if (fileExists(appMainRootJarName)) {
                              echo "Copying specific root JAR ${appMainRootJarName} to ${TEMP_RELEASE_STAGING_DIR}\\${appMainRootJarName}"
                             bat "copy \"${appMainRootJarName}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedAppMainRootJarNameForBat}\""
-                        } else if (fileExists("${OUTPUT_DIR}\\${appMainRootJarName}")) { 
+                        } else if (fileExists("${OUTPUT_DIR}\\${appMainRootJarName}")) {
                             echo "Copying specific root JAR ${OUTPUT_DIR}\\${appMainRootJarName} to ${TEMP_RELEASE_STAGING_DIR}\\${appMainRootJarName}"
                             bat "copy \"${OUTPUT_DIR}\\${appMainRootJarName}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedAppMainRootJarNameForBat}\""
                             bat "if exist \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\${appMainRootJarName}\" del \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\${quotedAppMainRootJarNameForBat}\""
@@ -540,8 +542,8 @@ pipeline {
                 script {
                     def tag = "build-${env.BUILD_NUMBER}"
                     def message = "Automated build ${env.BUILD_NUMBER}"
-                    def zipFileName = "${RELEASE_PACKAGE_DIR}.zip" 
-                    def zipFilePath = "${env.WORKSPACE}\\${zipFileName}".replace('/', '\\') 
+                    def zipFileName = "${RELEASE_PACKAGE_DIR}.zip"
+                    def zipFilePath = "${env.WORKSPACE}\\${zipFileName}".replace('/', '\\')
 
                     def tempStagingPathForPS = "${env.WORKSPACE}\\${TEMP_RELEASE_STAGING_DIR}".replace('/', '\\')
                     echo "Creating archive: ${zipFilePath} from directory ${tempStagingPathForPS}"
@@ -550,27 +552,27 @@ pipeline {
                     if (!fileExists(zipFilePath)) {
                         error "Failed to create release ZIP file: ${zipFilePath}"
                     }
-                    
+
                     withCredentials([string(credentialsId: "${GITHUB_CREDS}", variable: 'GH_TOKEN')]) {
                         def psPublishScriptContent = """
                             \$ErrorActionPreference = 'Stop'
                             \$ProgressPreference = 'SilentlyContinue'
 
-                            \$ghToken = "${GH_TOKEN}" 
+                            \$ghToken = "${GH_TOKEN}"
                             \$repo = "${GITHUB_REPO}"
                             \$tag_name = "${tag}"
                             \$release_name = "${tag}"
                             \$release_body = @"
 ${message.replace("`", "``").replace('"', '""').replace("\$", "`\$")}
-"@.Trim() 
+"@.Trim()
                             \$draft_status = \$false
                             \$prerelease_status = \$false
 
                             \$zipFilePathForPS = @"
 ${zipFilePath.replace('\\', '\\\\')}
 "@.Trim()
-                            \$zipFileNameForPS = "${zipFileName}" 
-                            
+                            \$zipFileNameForPS = "${zipFileName}"
+
                             \$releaseBodyHashtable = @{
                                 tag_name   = \$tag_name
                                 name       = \$release_name
@@ -578,20 +580,20 @@ ${zipFilePath.replace('\\', '\\\\')}
                                 draft      = \$draft_status
                                 prerelease = \$prerelease_status
                             }
-                            \$releaseDataJsonForApi = \$releaseBodyHashtable | ConvertTo-Json -Depth 5 
+                            \$releaseDataJsonForApi = \$releaseBodyHashtable | ConvertTo-Json -Depth 5
 
                             Write-Host "DEBUG: Repo: \$repo"
                             Write-Host "DEBUG: Release Data JSON for API: \$releaseDataJsonForApi"
                             Write-Host "DEBUG: Zip File Path for PS (local path to upload): \$zipFilePathForPS"
                             Write-Host "DEBUG: Zip File Name for PS (asset name on GitHub): \$zipFileNameForPS"
-                            
+
                             Write-Host "Creating GitHub release..."
                             \$headers = @{
                                 "Accept"               = "application/vnd.github+json"
                                 "Authorization"        = "Bearer \$ghToken"
                                 "X-GitHub-Api-Version" = "2022-11-28"
                             }
-                            
+
                             try {
                                 \$releaseResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/\$repo/releases" -Method Post -Headers \$headers -Body \$releaseDataJsonForApi -ContentType "application/json"
                                 Write-Host "Successfully created GitHub release."
@@ -611,15 +613,15 @@ ${zipFilePath.replace('\\', '\\\\')}
 
                             \$uploadUrlBase = \$uploadUrlWithPlaceholder.Substring(0, \$uploadUrlWithPlaceholder.IndexOf('{'))
                             \$finalUploadUrl = \$uploadUrlBase + "?name=" + [System.Uri]::EscapeDataString(\$zipFileNameForPS)
-                            
-                            Write-Host ("Formatted Upload URL for \${zipFileNameForPS}: " + \$finalUploadUrl) 
+
+                            Write-Host ("Formatted Upload URL for \${zipFileNameForPS}: " + \$finalUploadUrl)
 
                             Write-Host "Uploading asset: \$zipFilePathForPS to \$finalUploadUrl"
-                            
+
                             \$uploadHeaders = @{
                                 "Authorization"        = "Bearer \$ghToken"
                                 "X-GitHub-Api-Version" = "2022-11-28"
-                                "Content-Type"         = "application/zip" 
+                                "Content-Type"         = "application/zip"
                             }
 
                             try {
@@ -633,9 +635,9 @@ ${zipFilePath.replace('\\', '\\\\')}
                             }
                         """.stripIndent()
 
-                        byte[] scriptBytesUTF16LE = psPublishScriptContent.getBytes("UTF-16LE") 
+                        byte[] scriptBytesUTF16LE = psPublishScriptContent.getBytes("UTF-16LE")
                         def encodedCommand = scriptBytesUTF16LE.encodeBase64().toString()
-                        
+
                         bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
                     }
                 }
