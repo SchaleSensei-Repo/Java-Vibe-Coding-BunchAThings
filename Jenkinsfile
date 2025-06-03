@@ -102,9 +102,8 @@ pipeline {
 
                     byte[] scriptBytes = psScriptContent.getBytes("UTF-16LE")
                     def encodedCommand = scriptBytes.encodeBase64().toString()
-                    // Temporarily remove stream suppressions to see PowerShell errors
-                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
-
+                    // Re-add stream suppressions for this script as it's now working
+                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null"
 
 
                     echo "Listing workspace root contents:"
@@ -318,8 +317,8 @@ pipeline {
                         $VerbosePreference = 'SilentlyContinue';
                         $InformationPreference = 'SilentlyContinue';
 
-                        $DebugFilePath = Join-Path $env:WORKSPACE "powershell_test_discovery_debug.log"; # Use -FilePath for compatibility
-                        Out-File -FilePath $DebugFilePath -InputObject "--- PowerShell Test Discovery Debug Log ---`n" -Encoding UTF8 -Force;
+                        $DebugFilePath = Join-Path $env:WORKSPACE "powershell_test_discovery_debug.log"; # Use -Path for compatibility
+                        Out-File -Path $DebugFilePath -InputObject "--- PowerShell Test Discovery Debug Log ---`n" -Encoding UTF8 -Force;
 
                         $ErrorActionPreference = 'Stop'
                         $WorkspacePath = $env:WORKSPACE
@@ -329,41 +328,41 @@ pipeline {
                         
                         $testFilesByModule = @{}
 
-                        Add-Content -FilePath $DebugFilePath -Value "Workspace Path: $WorkspacePath`n"; # Use -FilePath
-                        Add-Content -FilePath $DebugFilePath -Value "Found Module Roots (`$moduleRoots.Count): $($moduleRoots.Count)`n"; # Use -FilePath
-                        $moduleRoots | ForEach-Object { Add-Content -FilePath $DebugFilePath -Value "  - $_" } # Use -FilePath
-                        Add-Content -FilePath $DebugFilePath -Value "`n"; # Use -FilePath
+                        Add-Content -Path $DebugFilePath -Value "Workspace Path: $WorkspacePath`n"; # Use -Path
+                        Add-Content -Path $DebugFilePath -Value "Found Module Roots (`$moduleRoots.Count): $($moduleRoots.Count)`n"; # Use -Path
+                        $moduleRoots | ForEach-Object { Add-Content -Path $DebugFilePath -Value "  - $_" } # Use -Path
+                        Add-Content -Path $DebugFilePath -Value "`n"; # Use -Path
 
                         foreach ($rootPathAbs in $moduleRoots) {
-                            $testJavaDir = Join-Path -Path $rootPathAbs -ChildPath 'src\\test\\java'; # Path is fine here
-                            Add-Content -FilePath $DebugFilePath -Value "Processing root: $rootPathAbs, Test Java Dir: $testJavaDir`n"; # Use -FilePath
+                            $testJavaDir = Join-Path -Path $rootPathAbs -ChildPath 'src\\test\\java'; # Path is fine here, refers to Join-Path param
+                            Add-Content -Path $DebugFilePath -Value "Processing root: $rootPathAbs, Test Java Dir: $testJavaDir`n"; # Use -Path
                             if (Test-Path $testJavaDir -PathType Container) {
-                                Add-Content -FilePath $DebugFilePath -Value "  '$testJavaDir' exists and is a directory.`n"; # Use -FilePath
+                                Add-Content -Path $DebugFilePath -Value "  '$testJavaDir' exists and is a directory.`n"; # Use -Path
                                 $javaFiles = Get-ChildItem -Path $testJavaDir -Recurse -Filter *.java | ForEach-Object { $_.FullName }
-                                Add-Content -FilePath $DebugFilePath -Value "  Found Java files in $testJavaDir (`$javaFiles.Count): $($javaFiles.Count)`n"; # Use -FilePath
+                                Add-Content -Path $DebugFilePath -Value "  Found Java files in $testJavaDir (`$javaFiles.Count): $($javaFiles.Count)`n"; # Use -Path
                                 if ($javaFiles.Count -gt 0) {
-                                    $javaFiles | ForEach-Object { Add-Content -FilePath $DebugFilePath -Value "    - $($_)" } # Use -FilePath
-                                    $relativeRoot = $rootPathAbs.Substring($WorkspacePath.Length).TrimStart('\\').TrimStart('/'); # Substring/Trim are fine
+                                    $javaFiles | ForEach-Object { Add-Content -Path $DebugFilePath -Value "    - $($_)" } # Use -Path
+                                    $relativeRoot = $rootPathAbs.Substring($WorkspacePath.Length).TrimStart('\\').TrimStart('/'); # Substring/Trim are fine, refers to string methods
                                     $testFilesByModule[$relativeRoot] = @($javaFiles)
-                                    Add-Content -FilePath $DebugFilePath -Value "  Mapped relative root '$relativeRoot' to $($javaFiles.Count) files.`n"; # Use -FilePath
+                                    Add-Content -Path $DebugFilePath -Value "  Mapped relative root '$relativeRoot' to $($javaFiles.Count) files.`n"; # Use -Path
                                 } else {
-                                     Add-Content -FilePath $DebugFilePath -Value "  No Java files found in $testJavaDir.`n"; # Use -FilePath
+                                     Add-Content -Path $DebugFilePath -Value "  No Java files found in $testJavaDir.`n"; # Use -Path
                                 }
                             } else {
-                                Add-Content -FilePath $DebugFilePath -Value "  '$testJavaDir' does NOT exist or is not a directory.`n"; # Use -FilePath
+                                Add-Content -Path $DebugFilePath -Value "  '$testJavaDir' does NOT exist or is not a directory.`n"; # Use -Path
                             }
                         }
-                        Add-Content -FilePath $DebugFilePath -Value "`nFinal `$testFilesByModule before JSON conversion (`$testFilesByModule.Count entries): $($testFilesByModule.Count)`n"; # Use -FilePath
-                        $testFilesByModule.GetEnumerator() | ForEach-Object { Add-Content -FilePath $DebugFilePath -Value "  Key: $($_.Name), Files: $($_.Value.Count)" } # Use -FilePath
-                        Add-Content -FilePath $DebugFilePath -Value "`n--- End of PowerShell Debug Log ---`n"; # Use -FilePath
+                        Add-Content -Path $DebugFilePath -Value "`nFinal `$testFilesByModule before JSON conversion (`$testFilesByModule.Count entries): $($testFilesByModule.Count)`n"; # Use -Path
+                        $testFilesByModule.GetEnumerator() | ForEach-Object { Add-Content -Path $DebugFilePath -Value "  Key: $($_.Name), Files: $($_.Value.Count)" } # Use -Path
+                        Add-Content -Path $DebugFilePath -Value "`n--- End of PowerShell Debug Log ---`n"; # Use -Path
 
                         return $testFilesByModule | ConvertTo-Json -Depth 5
                     '''.stripIndent()
                     byte[] psScriptBytes = psFindTestModulesScript.getBytes("UTF-16LE")
                     def encodedPsCommand = psScriptBytes.encodeBase64().toString()
                     
-                    // Temporarily remove stream suppressions to see PowerShell errors for test discovery
-                    def commandToExecute = "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand}"
+                    // Re-add stream suppressions, using -Path in script for compatibility.
+                    def commandToExecute = "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null"
                     echo "DEBUG: Executing PowerShell command for test discovery." 
                     def psOutputJson = bat(script: commandToExecute, returnStdout: true).trim()
                     echo "DEBUG: Raw psOutputJson from PowerShell: '${psOutputJson}'"
@@ -425,7 +424,8 @@ pipeline {
                         if (foundMainAppFile) {
                             def mainAppFileName = foundMainAppFile.tokenize('/')[-1]
                             associatedMainAppClassNameOnly = mainAppFileName.replace('.java', '')
-                            associatedAppClassOutputDir = "${env.OUTPUT_DIR}\\${associatedAppClassClassNameOnly}_classes".replace('/', '\\') // Corrected variable name
+                            // Corrected variable name here
+                            associatedAppClassOutputDir = "${env.OUTPUT_DIR}\\${associatedMainAppClassNameOnly}_classes".replace('/', '\\') 
                             echo "  INFO: Linked module '${moduleName}' to app output '${associatedAppClassOutputDir}' via main file '${mainAppFileName}'."
                         } else {
                             echo "  WARNING: Could not find a main app file in '${expectedMainSrcPrefix}' for module '${moduleName}'. App classes might be missing from test classpath."
