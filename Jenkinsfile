@@ -362,8 +362,8 @@ pipeline {
                     byte[] psScriptBytes = psFindTestModulesScript.getBytes("UTF-16LE")
                     def encodedPsCommand = psScriptBytes.encodeBase64().toString()
                     
-                    // Re-add stream suppressions, but fix Out-File in script.
-                    def commandToExecute = "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null"
+                    // Temporarily remove stream suppressions to see PowerShell errors for test discovery
+                    def commandToExecute = "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand}"
                     echo "DEBUG: Executing PowerShell command for test discovery." 
                     def psOutputJson = bat(script: commandToExecute, returnStdout: true).trim()
                     echo "DEBUG: Raw psOutputJson from PowerShell: '${psOutputJson}'"
