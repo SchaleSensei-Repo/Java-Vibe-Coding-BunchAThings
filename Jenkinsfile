@@ -300,6 +300,9 @@ pipeline {
                     echo "Scanning for test modules (directories containing src/test/java)..."
                     def psFindTestModulesScript = '''
                         $ProgressPreference = 'SilentlyContinue';
+                        $WarningPreference = 'SilentlyContinue';
+                        $VerbosePreference = 'SilentlyContinue';
+                        $InformationPreference = 'SilentlyContinue';
                         $ErrorActionPreference = 'Stop'
                         $WorkspacePath = $env:WORKSPACE
                         $moduleRoots = Get-ChildItem -Path $WorkspacePath -Recurse -Directory -Filter 'java' |
