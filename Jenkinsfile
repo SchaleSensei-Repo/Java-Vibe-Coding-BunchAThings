@@ -261,24 +261,25 @@ pipeline {
                     def dependencyJars = []
                     def libsDir = new File(absoluteLibsDirPath)
                     if (libsDir.isDirectory()) {
-                        // Replaced eachFileRecurse with listFiles() and a for loop for CPS compatibility
                         echo "INFO [Unit Test]: Scanning for JARs in ${absoluteLibsDirPath}"
                         File[] filesInLibsDir = libsDir.listFiles()
                         if (filesInLibsDir != null) {
-                            for (File file : filesInLibsDir) {
-                                if (file.isFile() && file.name.toLowerCase().endsWith(".jar")) {
-                                    dependencyJars.add(file.getAbsolutePath().replace('/', '\\'))
-                                    echo "DEBUG [Unit Test]: Found dependency JAR: ${file.getAbsolutePath()}"
+                            for (File f : filesInLibsDir) { // Corrected variable name from 'file' to 'f'
+                                if (f.isFile() && f.name.toLowerCase().endsWith(".jar")) {
+                                    dependencyJars.add(f.getAbsolutePath().replace('/', '\\'))
+                                    echo "DEBUG [Unit Test]: Found dependency JAR: ${f.getAbsolutePath()}"
                                 }
                             }
                         } else {
-                            // This case should ideally not happen if libsDirPath exists and is a directory
-                            // but good to log if it does.
-                                dependencyJars.add(file.getAbsolutePath().replace('/', '\\'))
+                            echo "WARNING [Unit Test]: listFiles() returned null for ${absoluteLibsDirPath}."
                         }
+                    } else { // This 'else' corresponds to 'if (libsDir.isDirectory())'
+                         echo "WARNING [Unit Test]: Calculated libs path '${absoluteLibsDirPath}' is NOT a directory (exists: ${libsDir.exists()})."
                     }
-                    } else if (dependencyJars.isEmpty()) { // Check if empty only if libsDir was not a directory or listFiles was null/empty
-                        echo "WARNING: No dependency JARs found in ${libsDirPath}. Tests might fail."
+
+                    // This check is now correctly placed after attempting to populate dependencyJars
+                    if (dependencyJars.isEmpty()) {
+                        echo "WARNING: No dependency JARs found in ${libsDirPath} after scanning. Tests might fail."
                     }
                     def commonTestClasspathParts = new ArrayList(dependencyJars)
 
