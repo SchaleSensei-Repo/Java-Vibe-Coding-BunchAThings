@@ -325,7 +325,7 @@ pipeline {
                     '''.stripIndent()
                     byte[] psScriptBytes = psFindTestModulesScript.getBytes("UTF-16LE")
                     def encodedPsCommand = psScriptBytes.encodeBase64().toString()
-                    def psOutputJson = bat(script: "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand} 2>$null 3>$null 4>$null 5>$null 6>$null 7>$null", returnStdout: true).trim()
+                    def psOutputJson = bat(script: "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand} 2\>$null 3\>$null 4\>$null 5\>$null 6\>$null 7\>$null", returnStdout: true).trim()
 
                     if (psOutputJson.isEmpty() || psOutputJson == "{}") {
                         echo "No test modules with src/test/java/*.java files found. Skipping test execution."
