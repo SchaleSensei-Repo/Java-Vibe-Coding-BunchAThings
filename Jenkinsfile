@@ -325,12 +325,19 @@ pipeline {
                     '''.stripIndent()
                     byte[] psScriptBytes = psFindTestModulesScript.getBytes("UTF-16LE")
                     def encodedPsCommand = psScriptBytes.encodeBase64().toString()
-                    // Construct the command string using concatenation to ensure literal '>' characters
-                    def psOutputJson = bat(script: "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null", returnStdout: true).trim()
+                    
+                    def commandToExecute = "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null"
+                    echo "DEBUG: Executing PowerShell command for test discovery." 
+                    def psOutputJson = bat(script: commandToExecute, returnStdout: true).trim()
+                    echo "DEBUG: Raw psOutputJson from PowerShell: '${psOutputJson}'"
 
                     if (psOutputJson.isEmpty() || psOutputJson == "{}") {
                         echo "No test modules with src/test/java/*.java files found. Skipping test execution."
                         return
+                    }
+                    // Ensure psOutputJson is not null or empty before readJSON
+                    if (psOutputJson == null || psOutputJson.trim().isEmpty()) {
+                        error("PowerShell script for test discovery returned empty or null. Cannot parse JSON.")
                     }
                     def testModulesData = readJSON(text: psOutputJson)
 
