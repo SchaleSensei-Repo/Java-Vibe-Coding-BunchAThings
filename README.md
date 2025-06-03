@@ -174,6 +174,13 @@ This repository is intended for learning, experimentation, and sharing small, fu
   - The calculation is only based on rough estimate and not reflect on real scientific calculation
 </details>
 
+<details>
+  <summary><strong>19. Cryptography tools </strong></summary>
+  - Can encode/encrypt or decode/decrypt input text or text file with many cryptography methods
+  - Almost all cryptography methods have descriptions
+  - Can import and export the output result from/to text file
+</details>
+
 ---
 
 ## Planned/Future Apps
