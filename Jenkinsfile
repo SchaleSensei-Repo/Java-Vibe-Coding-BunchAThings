@@ -102,8 +102,8 @@ pipeline {
 
                     byte[] scriptBytes = psScriptContent.getBytes("UTF-16LE")
                     def encodedCommand = scriptBytes.encodeBase64().toString()
-                    // Re-add stream suppressions for this script as it's now working
-                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null"
+                    // Temporarily remove stream suppressions to see PowerShell errors for main file discovery
+                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
 
 
                     echo "Listing workspace root contents:"
