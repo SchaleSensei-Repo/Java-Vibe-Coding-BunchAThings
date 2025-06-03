@@ -244,6 +244,178 @@ pipeline {
                 }
             }
         }
+
+        stage('Unit Test') {
+            steps {
+                script {
+                    echo "--- Starting Unit Test Stage ---"
+                    def testClassesDirBase = env.TEST_CLASSES_DIR_BASE
+                    def testReportsDirBase = env.TEST_REPORTS_DIR_BASE
+                    bat "if not exist \"${testClassesDirBase}\" mkdir \"${testClassesDirBase}\""
+                    bat "if not exist \"${testReportsDirBase}\" mkdir \"${testReportsDirBase}\""
+
+                    def workspacePath = env.WORKSPACE.replace('\\', '/') // Use forward slashes for internal Groovy logic
+                    def libsDirPath = env.LIBS_DIR_PATH
+                    def absoluteLibsDirPath = "${workspacePath}/${libsDirPath}".replace('/', File.separator)
+                    
+                    def dependencyJars = []
+                    def libsDir = new File(absoluteLibsDirPath)
+                    if (libsDir.isDirectory()) {
+                        libsDir.eachFileRecurse(groovy.io.FileType.FILES) { file ->
+                            if (file.name.toLowerCase().endsWith(".jar")) {
+                                dependencyJars.add(file.getAbsolutePath().replace('/', '\\'))
+                            }
+                        }
+                    }
+                    if (dependencyJars.isEmpty()) {
+                        echo "WARNING: No dependency JARs found in ${libsDirPath}. Tests might fail."
+                    }
+                    def commonTestClasspathParts = new ArrayList(dependencyJars)
+
+                    def junitConsoleJar = dependencyJars.find { it.contains("junit-platform-console-standalone") }
+                    if (!junitConsoleJar) {
+                        error "JUnit Platform Console Standalone JAR not found in ${libsDirPath}. Cannot run tests."
+                    }
+                    echo "Using JUnit Runner: ${junitConsoleJar.replace('/', '\\')}"
+
+                    def mainJavaFilesTxt = 'main_java_files.txt'
+                    if (!fileExists(mainJavaFilesTxt)) {
+                        error "File '${mainJavaFilesTxt}' not found. Was 'Build Apps' stage successful? Cannot determine application class outputs."
+                    }
+                    def mainAppFullPaths = readFile(file: mainJavaFilesTxt, encoding: 'UTF-8').trim().split("\\r?\\n")
+                        .collect { it.trim().replace('\\','/') } // Normalize to forward slashes
+                        .findAll { it }
+
+                    echo "Scanning for test modules (directories containing src/test/java)..."
+                    def psFindTestModulesScript = '''
+                        $ErrorActionPreference = 'Stop'
+                        $WorkspacePath = $env:WORKSPACE
+                        $moduleRoots = Get-ChildItem -Path $WorkspacePath -Recurse -Directory -Filter 'java' |
+                            Where-Object { $_.Name -eq 'java' -and $_.Parent.Name -eq 'test' -and $_.Parent.Parent.Name -eq 'src' } |
+                            Select-Object -ExpandProperty Directory |
+                            ForEach-Object { $_.Parent.Parent.Parent.FullName } | Get-Unique
+                        
+                        $testFilesByModule = @{}
+                        foreach ($rootPathAbs in $moduleRoots) {
+                            $testJavaDir = Join-Path -Path $rootPathAbs -ChildPath 'src\\test\\java'
+                            if (Test-Path $testJavaDir -PathType Container) {
+                                $javaFiles = Get-ChildItem -Path $testJavaDir -Recurse -Filter *.java | ForEach-Object { $_.FullName }
+                                if ($javaFiles) {
+                                    # Make $rootPathAbs relative to $WorkspacePath
+                                    $relativeRoot = $rootPathAbs.Substring($WorkspacePath.Length).TrimStart('\\').TrimStart('/')
+                                    $testFilesByModule[$relativeRoot] = @($javaFiles)
+                                }
+                            }
+                        }
+                        return $testFilesByModule | ConvertTo-Json -Depth 5
+                    '''.stripIndent()
+                    byte[] psScriptBytes = psFindTestModulesScript.getBytes("UTF-16LE")
+                    def encodedPsCommand = psScriptBytes.encodeBase64().toString()
+                    def psOutputJson = bat(script: "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedPsCommand}", returnStdout: true).trim()
+
+                    if (psOutputJson.isEmpty() || psOutputJson == "{}") {
+                        echo "No test modules with src/test/java/*.java files found. Skipping test execution."
+                        return
+                    }
+                    def testModulesData = readJSON(text: psOutputJson)
+
+                    if (testModulesData.isEmpty()) {
+                        echo "No test modules found after parsing JSON. Skipping test execution."
+                        return
+                    }
+
+                    boolean hasExecutionErrors = false
+
+                    testModulesData.each { moduleRelativePath, testFileFullPathsList ->
+                        // Ensure testFileFullPathsList is a List, even if JSON from PS gives a single string for one file
+                        def testFilePaths = []
+                        if (testFileFullPathsList instanceof List) {
+                            testFilePaths.addAll(testFileFullPathsList)
+                        } else if (testFileFullPathsList != null) {
+                            testFilePaths.add(testFileFullPathsList.toString())
+                        }
+
+                        if (testFilePaths.isEmpty() || testFilePaths.every { it == null || it.toString().trim().isEmpty() }) {
+                            echo "Skipping module '${moduleRelativePath}' as it has no test files listed."
+                            return // Groovy's 'return' in 'each' acts like 'continue'
+                        }
+
+                        def moduleName = moduleRelativePath.tokenize('\\/')[-1]
+                        echo "--- Processing tests for module: ${moduleName} (Path: ${moduleRelativePath}) ---"
+
+                        def moduleWorkspacePath = "${workspacePath}/${moduleRelativePath}".replace('/', File.separator) // OS specific for bat
+                        def testSrcJavaDir = "${moduleWorkspacePath}${File.separator}src${File.separator}test${File.separator}java"
+
+                        def associatedMainAppClassNameOnly = null
+                        def associatedAppClassOutputDir = null
+
+                        def expectedMainSrcPrefix = "${workspacePath}/${moduleRelativePath}/src/main/java".replace('//','/')
+                        def foundMainAppFile = mainAppFullPaths.find { mainAppFullPath ->
+                            mainAppFullPath.startsWith(expectedMainSrcPrefix)
+                        }
+
+                        if (foundMainAppFile) {
+                            def mainAppFileName = foundMainAppFile.tokenize('/')[-1]
+                            associatedMainAppClassNameOnly = mainAppFileName.replace('.java', '')
+                            associatedAppClassOutputDir = "${env.OUTPUT_DIR}\\${associatedMainAppClassNameOnly}_classes".replace('/', '\\')
+                            echo "  INFO: Linked module '${moduleName}' to app output '${associatedAppClassOutputDir}' via main file '${mainAppFileName}'."
+                        } else {
+                            echo "  WARNING: Could not find a main app file in '${expectedMainSrcPrefix}' for module '${moduleName}'. App classes might be missing from test classpath."
+                        }
+
+                        def moduleTestClassesDir = "${testClassesDirBase.replace('/', '\\')}\\${moduleName}_tests"
+                        def moduleTestReportsDir = "${testReportsDirBase.replace('/', '\\')}\\${moduleName}"
+                        bat "if not exist \"${moduleTestClassesDir}\" mkdir \"${moduleTestClassesDir}\""
+                        bat "if not exist \"${moduleTestReportsDir}\" mkdir \"${moduleTestReportsDir}\""
+
+                        def currentModuleClasspath = new ArrayList(commonTestClasspathParts)
+                        if (associatedAppClassOutputDir && fileExists(associatedAppClassOutputDir)) {
+                            currentModuleClasspath.add(associatedAppClassOutputDir)
+                        }
+                        def classpathStringForCompile = currentModuleClasspath.join(File.pathSeparator)
+                        def testFilesToCompile = testFilePaths.collect { "\"${it.replace('/','\\')}\"" }.join(" ")
+
+                        echo "  Compiling test files for module ${moduleName}..."
+                        def compileTestCommand = "javac -encoding UTF-8 -d \"${moduleTestClassesDir}\" -sourcepath \"${testSrcJavaDir}\" -cp \"${classpathStringForCompile}\" ${testFilesToCompile}"
+                        try {
+                            bat compileTestCommand
+                            echo "  Test compilation successful for ${moduleName}."
+                        } catch (e) {
+                            error "Test compilation failed for module ${moduleName}. Error: ${e.getMessage()}"
+                        }
+
+                        def classpathForJUnit = new ArrayList(currentModuleClasspath)
+                        classpathForJUnit.add(moduleTestClassesDir)
+                        def junitClasspathString = classpathForJUnit.unique().join(File.pathSeparator)
+
+                        echo "  Running tests for module ${moduleName} (Reports: ${moduleTestReportsDir})..."
+                        def junitCommand = "java -jar \"${junitConsoleJar.replace('/', '\\')}\" --scan-classpath --classpath \"${junitClasspathString}\" --reports-dir \"${moduleTestReportsDir}\""
+                        try {
+                            bat junitCommand
+                            echo "  JUnit tests execution completed for ${moduleName}."
+                        } catch (e) { // This catches script execution errors if JUnit runner itself fails (non-zero exit)
+                            echo "  ERROR: JUnit execution for module ${moduleName} failed with non-zero exit code. Error: ${e.getMessage()}"
+                            hasExecutionErrors = true 
+                        }
+                    }
+
+                    if (hasExecutionErrors) {
+                        currentBuild.result = 'UNSTABLE' // Mark build as unstable due to test execution errors
+                        echo "One or more test modules encountered execution errors."
+                    }
+                    // Test failures (not execution errors) will be handled by the JUnit publisher
+                    echo "--- Finished Unit Test Stage ---"
+                }
+            }
+            post {
+                always {
+                    script {
+                        echo "Archiving JUnit test reports..."
+                        junit '**/test-reports/**/*.xml'
+                    }
+                }
+            }
+        }
         
         stage('Create Release Package') {
             steps {
