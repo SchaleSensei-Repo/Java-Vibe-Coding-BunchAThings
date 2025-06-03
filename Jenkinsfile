@@ -156,7 +156,8 @@ pipeline {
                     byte[] scriptBytes = psScriptContent.getBytes("UTF-16LE")
                     def encodedCommand = scriptBytes.encodeBase64().toString()
 
-                    def psCommandToExecute = "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null"
+                    // Temporarily remove stream suppressions to see PowerShell errors
+                    def psCommandToExecute = "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
                     def psOutputJson = bat(script: psCommandToExecute, returnStdout: true).trim()
                     echo "DEBUG: Raw psOutputJson from PowerShell (Build Apps): '${psOutputJson}'"
 
@@ -218,7 +219,7 @@ pipeline {
                         }
                         def moduleName = moduleRelPath.tokenize('\\/')[-1]
                         def moduleClassOutputDir = "${OUTPUT_DIR}/${moduleName}_classes".replace('/', '\\')
-                        
+
                         // Determine source path for this module (e.g., source/myModule/src/main/java or source/myModule/src)
                         def moduleWorkspaceAbsPath = "${workspacePath}/${moduleRelPath}".replace('/', File.separator)
                         def srcMainJava = new File("${moduleWorkspaceAbsPath}${File.separator}src${File.separator}main${File.separator}java")
@@ -243,7 +244,7 @@ pipeline {
                             echo "  Source Path for javac: ${actualModuleSourcePathForJavac}"
                             echo "  Output Dir: ${moduleClassOutputDir}"
                             bat "if not exist \"${moduleClassOutputDir}\" mkdir \"${moduleClassOutputDir}\""
-                            
+
                             def currentModuleCompileClasspathParts = new ArrayList(dependencyJars)
                             // Add other compiled module outputs to classpath - this assumes a flat dependency or that they get compiled in time
                             allJavaFilesByModule.keySet().each { otherModuleKey ->
@@ -302,7 +303,7 @@ pipeline {
                         String mainFileSrcMainJavaPath = new File("${mainFileModuleWorkspaceAbsPath}${File.separator}src${File.separator}main${File.separator}java").getAbsolutePath().replace('\\','/')
                         String mainFileSrcJavaPath = new File("${mainFileModuleWorkspaceAbsPath}${File.separator}src${File.separator}java").getAbsolutePath().replace('\\','/')
                         String mainFileSrcPath = new File("${mainFileModuleWorkspaceAbsPath}${File.separator}src").getAbsolutePath().replace('\\','/')
-                        
+
                         String packagePathPart = ""
                         if (groovyMainFilePath.startsWith(mainFileSrcMainJavaPath + "/")) {
                             packagePathPart = groovyMainFilePath.substring((mainFileSrcMainJavaPath + "/").length())
@@ -319,7 +320,7 @@ pipeline {
                                 if (packagePathPart.startsWith("java/")) packagePathPart = packagePathPart.substring("java/".length())
                             }
                         }
-                        
+
                         if (packagePathPart.contains('/')) {
                             fqcn = packagePathPart.substring(0, packagePathPart.lastIndexOf('/')).replace('/', '.') + "." + mainClassNameOnly
                         }
@@ -350,7 +351,7 @@ pipeline {
                                      echo "INFO: ${jarName} is the designated Main Hub JAR, will be placed in workspace root."
                                 }
                             }
-                            
+
                             if (!fileExists(mainFileModuleClassOutputDir)) {
                                 error "Output directory ${mainFileModuleClassOutputDir} does not exist for JARing ${mainClassNameOnly}. Module compilation likely failed."
                             }
@@ -390,7 +391,7 @@ pipeline {
                     bat "if not exist \"${testClassesDirBase}\" mkdir \"${testClassesDirBase}\""
                     bat "if not exist \"${testReportsDirBase}\" mkdir \"${testReportsDirBase}\""
 
-                    def workspacePath = env.WORKSPACE.replace('\\', '/') 
+                    def workspacePath = env.WORKSPACE.replace('\\', '/')
                     def libsDirPath = env.LIBS_DIR_PATH
                     def absoluteLibsDirPath = "${workspacePath}/${libsDirPath}".replace('/', File.separator)
 
@@ -626,7 +627,7 @@ pipeline {
                             )
                         )
                     """
-                    
+
                     // Handle AppMainRoot.jar if it's different from MAIN_HUB_JAR_NAME and was a rootJarApp
                     def appMainRootJarName = "AppMainRoot.jar"
                     def quotedAppMainRootJarNameForBat = "\"${appMainRootJarName}\""
