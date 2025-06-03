@@ -303,7 +303,6 @@ pipeline {
                         $WorkspacePath = $env:WORKSPACE
                         $moduleRoots = Get-ChildItem -Path $WorkspacePath -Recurse -Directory -Filter 'java' |
                             Where-Object { $_.Name -eq 'java' -and $_.Parent.Name -eq 'test' -and $_.Parent.Parent.Name -eq 'src' } |
-                            Select-Object -ExpandProperty Directory |
                             ForEach-Object { $_.Parent.Parent.Parent.FullName } | Get-Unique
                         
                         $testFilesByModule = @{}
