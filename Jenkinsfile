@@ -84,6 +84,10 @@ pipeline {
                     bat "mkdir \"${OUTPUT_DIR}\""
 
                     def psScriptContent = '''
+                        $ProgressPreference = 'SilentlyContinue';
+                        $WarningPreference = 'SilentlyContinue';
+                        $VerbosePreference = 'SilentlyContinue';
+                        $InformationPreference = 'SilentlyContinue';
                         $ErrorActionPreference = 'Stop';
                         $javaFilePaths = Get-ChildItem -Recurse -Filter *.java |
                             Where-Object { Select-String -Path $_.FullName -Pattern 'public static void main' -Quiet } |
@@ -98,7 +102,9 @@ pipeline {
 
                     byte[] scriptBytes = psScriptContent.getBytes("UTF-16LE")
                     def encodedCommand = scriptBytes.encodeBase64().toString()
-                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand}"
+                    // Suppress extraneous output from this PowerShell script as well
+                    bat "powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand} 2" + ">" + "\$null 3" + ">" + "\$null 4" + ">" + "\$null 5" + ">" + "\$null 6" + ">" + "\$null 7" + ">" + "\$null"
+
 
                     echo "Listing workspace root contents:"
                     bat "dir /b"
@@ -264,7 +270,7 @@ pipeline {
                         echo "INFO [Unit Test]: Scanning for JARs in ${absoluteLibsDirPath}"
                         File[] filesInLibsDir = libsDir.listFiles()
                         if (filesInLibsDir != null) {
-                            for (File f : filesInLibsDir) { // Corrected variable name from 'file' to 'f'
+                            for (File f : filesInLibsDir) { 
                                 if (f.isFile() && f.name.toLowerCase().endsWith(".jar")) {
                                     dependencyJars.add(f.getAbsolutePath().replace('/', '\\'))
                                     echo "DEBUG [Unit Test]: Found dependency JAR: ${f.getAbsolutePath()}"
@@ -273,11 +279,10 @@ pipeline {
                         } else {
                             echo "WARNING [Unit Test]: listFiles() returned null for ${absoluteLibsDirPath}."
                         }
-                    } else { // This 'else' corresponds to 'if (libsDir.isDirectory())'
+                    } else { 
                          echo "WARNING [Unit Test]: Calculated libs path '${absoluteLibsDirPath}' is NOT a directory (exists: ${libsDir.exists()})."
                     }
 
-                    // This check is now correctly placed after attempting to populate dependencyJars
                     if (dependencyJars.isEmpty()) {
                         echo "WARNING: No dependency JARs found in ${libsDirPath} after scanning. Tests might fail."
                     }
@@ -294,7 +299,7 @@ pipeline {
                         error "File '${mainJavaFilesTxt}' not found. Was 'Build Apps' stage successful? Cannot determine application class outputs."
                     }
                     def mainAppFullPaths = readFile(file: mainJavaFilesTxt, encoding: 'UTF-8').trim().split("\\r?\\n")
-                        .collect { it.trim().replace('\\','/') } // Normalize to forward slashes
+                        .collect { it.trim().replace('\\','/') } 
                         .findAll { it }
 
                     echo "Scanning for test modules (directories containing src/test/java)..."
@@ -303,6 +308,10 @@ pipeline {
                         $WarningPreference = 'SilentlyContinue';
                         $VerbosePreference = 'SilentlyContinue';
                         $InformationPreference = 'SilentlyContinue';
+
+                        $DebugFilePath = Join-Path $env:WORKSPACE "powershell_test_discovery_debug.log";
+                        Out-File -Path $DebugFilePath -InputObject "--- PowerShell Test Discovery Debug Log ---`n" -Encoding UTF8 -Force;
+
                         $ErrorActionPreference = 'Stop'
                         $WorkspacePath = $env:WORKSPACE
                         $moduleRoots = Get-ChildItem -Path $WorkspacePath -Recurse -Directory -Filter 'java' |
@@ -310,17 +319,35 @@ pipeline {
                             ForEach-Object { $_.Parent.Parent.Parent.FullName } | Get-Unique
                         
                         $testFilesByModule = @{}
+
+                        Add-Content -Path $DebugFilePath -Value "Workspace Path: $WorkspacePath`n";
+                        Add-Content -Path $DebugFilePath -Value "Found Module Roots (`$moduleRoots.Count): $($moduleRoots.Count)`n";
+                        $moduleRoots | ForEach-Object { Add-Content -Path $DebugFilePath -Value "  - $_" }
+                        Add-Content -Path $DebugFilePath -Value "`n"; 
+
                         foreach ($rootPathAbs in $moduleRoots) {
-                            $testJavaDir = Join-Path -Path $rootPathAbs -ChildPath 'src\\test\\java'
+                            $testJavaDir = Join-Path -Path $rootPathAbs -ChildPath 'src\\test\\java';
+                            Add-Content -Path $DebugFilePath -Value "Processing root: $rootPathAbs, Test Java Dir: $testJavaDir`n";
                             if (Test-Path $testJavaDir -PathType Container) {
+                                Add-Content -Path $DebugFilePath -Value "  '$testJavaDir' exists and is a directory.`n";
                                 $javaFiles = Get-ChildItem -Path $testJavaDir -Recurse -Filter *.java | ForEach-Object { $_.FullName }
-                                if ($javaFiles) {
-                                    # Make $rootPathAbs relative to $WorkspacePath
+                                Add-Content -Path $DebugFilePath -Value "  Found Java files in $testJavaDir (`$javaFiles.Count): $($javaFiles.Count)`n";
+                                if ($javaFiles.Count -gt 0) {
+                                    $javaFiles | ForEach-Object { Add-Content -Path $DebugFilePath -Value "    - $($_)" }
                                     $relativeRoot = $rootPathAbs.Substring($WorkspacePath.Length).TrimStart('\\').TrimStart('/')
                                     $testFilesByModule[$relativeRoot] = @($javaFiles)
+                                    Add-Content -Path $DebugFilePath -Value "  Mapped relative root '$relativeRoot' to $($javaFiles.Count) files.`n";
+                                } else {
+                                     Add-Content -Path $DebugFilePath -Value "  No Java files found in $testJavaDir.`n";
                                 }
+                            } else {
+                                Add-Content -Path $DebugFilePath -Value "  '$testJavaDir' does NOT exist or is not a directory.`n";
                             }
                         }
+                        Add-Content -Path $DebugFilePath -Value "`nFinal `$testFilesByModule before JSON conversion (`$testFilesByModule.Count entries): $($testFilesByModule.Count)`n";
+                        $testFilesByModule.GetEnumerator() | ForEach-Object { Add-Content -Path $DebugFilePath -Value "  Key: $($_.Name), Files: $($_.Value.Count)" }
+                        Add-Content -Path $DebugFilePath -Value "`n--- End of PowerShell Debug Log ---`n";
+
                         return $testFilesByModule | ConvertTo-Json -Depth 5
                     '''.stripIndent()
                     byte[] psScriptBytes = psFindTestModulesScript.getBytes("UTF-16LE")
@@ -332,12 +359,12 @@ pipeline {
                     echo "DEBUG: Raw psOutputJson from PowerShell: '${psOutputJson}'"
 
                     if (psOutputJson.isEmpty() || psOutputJson == "{}") {
-                        echo "No test modules with src/test/java/*.java files found. Skipping test execution."
+                        echo "No test modules with src/test/java/*.java files found according to PowerShell script. Skipping test execution."
+                        echo "Check 'powershell_test_discovery_debug.log' in workspace for details."
                         return
                     }
-                    // Ensure psOutputJson is not null or empty before readJSON
                     if (psOutputJson == null || psOutputJson.trim().isEmpty()) {
-                        error("PowerShell script for test discovery returned empty or null. Cannot parse JSON.")
+                        error("PowerShell script for test discovery returned empty or null. Cannot parse JSON. Check 'powershell_test_discovery_debug.log'.")
                     }
                     def testModulesData = readJSON(text: psOutputJson)
 
@@ -349,7 +376,6 @@ pipeline {
                     boolean hasExecutionErrors = false
 
                     testModulesData.each { moduleRelativePath, testFileFullPathsList ->
-                        // Ensure testFileFullPathsList is a List, even if JSON from PS gives a single string for one file
                         def testFilePaths = []
                         if (testFileFullPathsList instanceof List) {
                             testFilePaths.addAll(testFileFullPathsList)
@@ -359,13 +385,13 @@ pipeline {
 
                         if (testFilePaths.isEmpty() || testFilePaths.every { it == null || it.toString().trim().isEmpty() }) {
                             echo "Skipping module '${moduleRelativePath}' as it has no test files listed."
-                            return // Groovy's 'return' in 'each' acts like 'continue'
+                            return 
                         }
 
                         def moduleName = moduleRelativePath.tokenize('\\/')[-1]
                         echo "--- Processing tests for module: ${moduleName} (Path: ${moduleRelativePath}) ---"
 
-                        def moduleWorkspacePath = "${workspacePath}/${moduleRelativePath}".replace('/', File.separator) // OS specific for bat
+                        def moduleWorkspacePath = "${workspacePath}/${moduleRelativePath}".replace('/', File.separator) 
                         def testSrcJavaDir = "${moduleWorkspacePath}${File.separator}src${File.separator}test${File.separator}java"
 
                         def associatedMainAppClassNameOnly = null
@@ -415,17 +441,16 @@ pipeline {
                         try {
                             bat junitCommand
                             echo "  JUnit tests execution completed for ${moduleName}."
-                        } catch (e) { // This catches script execution errors if JUnit runner itself fails (non-zero exit)
+                        } catch (e) { 
                             echo "  ERROR: JUnit execution for module ${moduleName} failed with non-zero exit code. Error: ${e.getMessage()}"
                             hasExecutionErrors = true 
                         }
                     }
 
                     if (hasExecutionErrors) {
-                        currentBuild.result = 'UNSTABLE' // Mark build as unstable due to test execution errors
+                        currentBuild.result = 'UNSTABLE' 
                         echo "One or more test modules encountered execution errors."
                     }
-                    // Test failures (not execution errors) will be handled by the JUnit publisher
                     echo "--- Finished Unit Test Stage ---"
                 }
             }
@@ -446,13 +471,13 @@ pipeline {
                     bat "mkdir \"${TEMP_RELEASE_STAGING_DIR}\""
                     bat "mkdir \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\"" 
 
-                    def quotedMainHubJarNameForBat = "\"${MAIN_HUB_JAR_NAME}\"" // For use in bat commands
-                    def mainHubJarSourcePathInOutput = "${OUTPUT_DIR}\\${MAIN_HUB_JAR_NAME}" // Path for fileExists
+                    def quotedMainHubJarNameForBat = "\"${MAIN_HUB_JAR_NAME}\"" 
+                    def mainHubJarSourcePathInOutput = "${OUTPUT_DIR}\\${MAIN_HUB_JAR_NAME}" 
 
                     if (fileExists(mainHubJarSourcePathInOutput)) {
                         echo "Copying main hub JAR: ${mainHubJarSourcePathInOutput} to ${TEMP_RELEASE_STAGING_DIR}\\${MAIN_HUB_JAR_NAME}"
                         bat "copy \"${mainHubJarSourcePathInOutput}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedMainHubJarNameForBat}\""
-                    } else if (MAIN_HUB_JAR_NAME == "AppMainRoot.jar" && fileExists(MAIN_HUB_JAR_NAME)) { // Check if it was a rootApp built to workspace
+                    } else if (MAIN_HUB_JAR_NAME == "AppMainRoot.jar" && fileExists(MAIN_HUB_JAR_NAME)) { 
                          echo "Copying root AppMainRoot.jar (as Main Hub): ${MAIN_HUB_JAR_NAME} to ${TEMP_RELEASE_STAGING_DIR}\\${MAIN_HUB_JAR_NAME}"
                          bat "copy \"${MAIN_HUB_JAR_NAME}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedMainHubJarNameForBat}\""
                     } else {
@@ -472,15 +497,13 @@ pipeline {
                     
                     def appMainRootJarName = "AppMainRoot.jar"
                     def quotedAppMainRootJarNameForBat = "\"${appMainRootJarName}\""
-                    if (appMainRootJarName != MAIN_HUB_JAR_NAME) { // Only if AppMainRoot is different from the main hub
+                    if (appMainRootJarName != MAIN_HUB_JAR_NAME) { 
                         if (fileExists(appMainRootJarName)) { 
                              echo "Copying specific root JAR ${appMainRootJarName} to ${TEMP_RELEASE_STAGING_DIR}\\${appMainRootJarName}"
                             bat "copy \"${appMainRootJarName}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedAppMainRootJarNameForBat}\""
                         } else if (fileExists("${OUTPUT_DIR}\\${appMainRootJarName}")) { 
                             echo "Copying specific root JAR ${OUTPUT_DIR}\\${appMainRootJarName} to ${TEMP_RELEASE_STAGING_DIR}\\${appMainRootJarName}"
                             bat "copy \"${OUTPUT_DIR}\\${appMainRootJarName}\" \"${TEMP_RELEASE_STAGING_DIR}\\${quotedAppMainRootJarNameForBat}\""
-                            // If AppMainRoot was in OUTPUT_DIR and copied to staging root, remove it from staging/output to avoid duplication
-                            // This assumes AppMainRoot.jar, if it exists, is *only* meant for the root of the zip.
                             bat "if exist \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\${appMainRootJarName}\" del \"${TEMP_RELEASE_STAGING_DIR}\\${OUTPUT_DIR}\\${quotedAppMainRootJarNameForBat}\""
                         } else {
                             echo "Warning: Specific root JAR ${appMainRootJarName} not found."
